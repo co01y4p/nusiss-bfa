@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Manager — Facilities AI Assistant</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="site">
+    <a class="brand" href="/">Facilities AI Assistant</a>
+    <nav>
+      <a href="/">Report an issue</a>
+      <a href="/track.html">Track a report</a>
+      <a href="/manager.html" class="active">Manager</a>
+    </nav>
+  </header>
+
+  <main>
+    <div class="card" id="login-card">
+      <h1>Manager sign-in</h1>
+      <p class="lede">Demo passcode auth — the full build uses JWT + Argon2id per milestone M1.</p>
+      <form id="login-form">
+        <label for="passcode">Passcode</label>
+        <input type="password" id="passcode" required />
+        <button type="submit">Sign in</button>
+      </form>
+      <div id="login-error" class="notice"></div>
+    </div>
+
+    <div class="card" id="list-card" style="display:none">
+      <h1>Incident queue</h1>
+      <p class="lede">Newest first. Change status from the dropdown — updates persist immediately.</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Ref</th><th>Location</th><th>Description</th><th>Status</th><th>Submitted</th></tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <div id="list-error" class="notice"></div>
+    </div>
+  </main>
+
+  <footer class="site">NUS-ISS capstone demo harness — vanilla M1 slice on Cloudflare Workers + D1.</footer>
+
+  <script>
+    const STATUSES = ["RECEIVED", "IN_PROGRESS", "RESOLVED", "CLOSED"];
+    let passcode = sessionStorage.getItem("bfa_passcode") || "";
+
+    const loginCard = document.getElementById("login-card");
+    const listCard = document.getElementById("list-card");
+    const loginError = document.getElementById("login-error");
+    const listError = document.getElementById("list-error");
+    const rows = document.getElementById("rows");
+
+    async function loadIncidents() {
+      const res = await fetch("/api/v1/incidents", { headers: { "x-manager-passcode": passcode } });
+      if (res.status === 401) throw new Error("Wrong passcode.");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load incidents");
+      rows.innerHTML = "";
+      for (const inc of data.incidents) {
+        const tr = document.createElement("tr");
+        const select = document.createElement("select");
+        for (const s of STATUSES) {
+          const opt = document.createElement("option");
+          opt.value = s;
+          opt.textContent = s.replace("_", " ");
+          if (s === inc.status) opt.selected = true;
+          select.appendChild(opt);
+        }
+        select.addEventListener("change", async () => {
+          listError.className = "notice";
+          try {
+            const r = await fetch(`/api/v1/incidents/${inc.id}/status`, {
+              method: "PATCH",
+              headers: { "content-type": "application/json", "x-manager-passcode": passcode },
+              body: JSON.stringify({ status: select.value }),
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error || "Update failed");
+          } catch (err) {
+            listError.className = "notice err";
+            listError.textContent = err.message;
+          }
+        });
+
+        const cells = [
+          `<strong>${inc.reference_code}</strong>`,
+          inc.location,
+          inc.description,
+        ];
+        for (const html of cells) {
+          const td = document.createElement("td");
+          if (html.startsWith("<strong>")) td.innerHTML = html;
+          else td.textContent = html;
+          tr.appendChild(td);
+        }
+        const tdStatus = document.createElement("td");
+        tdStatus.appendChild(select);
+        tr.appendChild(tdStatus);
+        const tdDate = document.createElement("td");
+        tdDate.textContent = new Date(inc.created_at).toLocaleString();
+        tr.appendChild(tdDate);
+        rows.appendChild(tr);
+      }
+      loginCard.style.display = "none";
+      listCard.style.display = "block";
+    }
+
+    document.getElementById("login-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      loginError.className = "notice";
+      passcode = document.getElementById("passcode").value;
+      try {
+        await loadIncidents();
+        sessionStorage.setItem("bfa_passcode", passcode);
+      } catch (err) {
+        loginError.className = "notice err";
+        loginError.textContent = err.message;
+      }
+    });
+
+    if (passcode) loadIncidents().catch(() => sessionStorage.removeItem("bfa_passcode"));
+  </script>
+</body>
+</html>

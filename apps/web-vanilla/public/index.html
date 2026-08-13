@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Facilities AI Assistant</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="site">
+    <a class="brand" href="/">Facilities AI Assistant</a>
+    <nav>
+      <a href="/" class="active">Report an issue</a>
+      <a href="/track.html">Track a report</a>
+      <a href="/manager.html">Manager</a>
+    </nav>
+  </header>
+
+  <main>
+    <div class="card">
+      <h1>Report a facility issue</h1>
+      <p class="lede">Leaks, electrical faults, broken lifts, or anything else — describe the issue and where it is. You'll get a reference code to track its status.</p>
+
+      <form id="report-form">
+        <label for="location">Location</label>
+        <input type="text" id="location" name="location" maxlength="200" placeholder="e.g. Block B, Level 3, near lift lobby" required />
+
+        <label for="description">Description</label>
+        <textarea id="description" name="description" maxlength="4000" placeholder="What's wrong? Include any hazards (smoke, gas smell, exposed wiring...)" required></textarea>
+
+        <button type="submit">Submit report</button>
+      </form>
+
+      <div id="result" class="notice"></div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>Save-before-AI</h2>
+        <p>Every report is persisted first and manageable with zero AI involvement — the AI triage layer (M2) sits on top, never in the critical path.</p>
+      </div>
+      <div class="card">
+        <h2>Track anytime</h2>
+        <p>Your reference code is opaque — no sequential IDs, no enumeration. Use it on the <a href="/track.html">tracking page</a>.</p>
+      </div>
+      <div class="card">
+        <h2>Manager review</h2>
+        <p>Facility managers review, update status, and (later) override AI triage decisions from the <a href="/manager.html">manager view</a>.</p>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site">NUS-ISS capstone demo harness — vanilla M1 slice on Cloudflare Workers + D1.</footer>
+
+  <script>
+    const form = document.getElementById("report-form");
+    const result = document.getElementById("result");
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      result.className = "notice";
+      const payload = {
+        location: document.getElementById("location").value.trim(),
+        description: document.getElementById("description").value.trim(),
+      };
+      try {
+        const res = await fetch("/api/v1/incidents", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Submission failed");
+        result.className = "notice ok";
+        result.innerHTML = `Report received. Your reference code is <code class="ref">${data.reference_code}</code> — save it to track status.`;
+        form.reset();
+      } catch (err) {
+        result.className = "notice err";
+        result.textContent = err.message;
+      }
+    });
+  </script>
+</body>
+</html>

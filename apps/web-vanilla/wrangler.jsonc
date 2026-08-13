@@ -1,0 +1,24 @@
+{
+  // Vanilla demo deployment of the Facilities AI Assistant harness (M1 slice).
+  // Deployed to the Swmengappdev@gmail.com Cloudflare account.
+  "name": "nusiss-bfa",
+  "account_id": "1e0170aaabc90ecf5f466128d1f0466a",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-08-01",
+  "assets": {
+    "directory": "public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "nusiss-bfa-db",
+      "database_id": "230d6761-aaa9-410c-8027-5747a414b5ad"
+    }
+  ],
+  "vars": {
+    // Demo-only manager passcode (the real project uses JWT + Argon2id per M1).
+    "MANAGER_PASSCODE": "bfa-manager-2026"
+  }
+}

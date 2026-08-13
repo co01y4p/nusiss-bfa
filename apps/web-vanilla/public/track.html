@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Track a report — Facilities AI Assistant</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="site">
+    <a class="brand" href="/">Facilities AI Assistant</a>
+    <nav>
+      <a href="/">Report an issue</a>
+      <a href="/track.html" class="active">Track a report</a>
+      <a href="/manager.html">Manager</a>
+    </nav>
+  </header>
+
+  <main>
+    <div class="card">
+      <h1>Track a report</h1>
+      <p class="lede">Enter the reference code you received when submitting your report.</p>
+
+      <form id="track-form">
+        <label for="code">Reference code</label>
+        <input type="text" id="code" name="code" placeholder="BFA-XXXXXXXX" required />
+        <button type="submit">Check status</button>
+      </form>
+
+      <div id="result" class="notice"></div>
+    </div>
+  </main>
+
+  <footer class="site">NUS-ISS capstone demo harness — vanilla M1 slice on Cloudflare Workers + D1.</footer>
+
+  <script>
+    const form = document.getElementById("track-form");
+    const result = document.getElementById("result");
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      result.className = "notice";
+      const code = document.getElementById("code").value.trim().toUpperCase();
+      try {
+        const res = await fetch(`/api/v1/incidents/track/${encodeURIComponent(code)}`);
+        if (res.status === 404) throw new Error("No report found for that reference code.");
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Lookup failed");
+        result.className = "notice ok";
+        result.innerHTML = `
+          <strong>${data.reference_code}</strong> —
+          <span class="status ${data.status}">${data.status.replace("_", " ")}</span><br />
+          Location: ${data.location}<br />
+          Submitted: ${new Date(data.created_at).toLocaleString()}<br />
+          Last updated: ${new Date(data.updated_at).toLocaleString()}`;
+      } catch (err) {
+        result.className = "notice err";
+        result.textContent = err.message;
+      }
+    });
+  </script>
+</body>
+</html>
