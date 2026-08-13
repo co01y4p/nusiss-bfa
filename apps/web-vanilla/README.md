@@ -1,6 +1,6 @@
 # Portal — vanilla demo app (Cloudflare Workers + D1)
 
-Live at **https://nusiss-bfa.swmengappdev.workers.dev**
+Live at **https://nusiss-bfa.co01y4p.workers.dev**
 
 A vanilla HTML/JS deployment of the M1 non-agentic slice ([plan](../../docs/plan/m1-non-agentic-baseline.md)): report form → D1 → manager queue → public tracking. No AI in this path by design (save-before-AI). D1 stands in for the plan's Postgres, since Workers can't host Postgres/FastAPI — same table shape, same API contract.
 

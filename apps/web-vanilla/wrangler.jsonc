@@ -1,8 +1,8 @@
 {
   // Vanilla demo deployment of the Facilities AI Assistant harness (M1 slice).
-  // Deployed to the Swmengappdev@gmail.com Cloudflare account.
+  // Deployed to the co01y4p Cloudflare account.
   "name": "nusiss-bfa",
-  "account_id": "1e0170aaabc90ecf5f466128d1f0466a",
+  "account_id": "2a0459c37d5dc00abfc891078ec70fc3",
   "main": "src/worker.js",
   "compatibility_date": "2026-08-01",
   "assets": {
@@ -14,7 +14,7 @@
     {
       "binding": "DB",
       "database_name": "nusiss-bfa-db",
-      "database_id": "230d6761-aaa9-410c-8027-5747a414b5ad"
+      "database_id": "e659a547-a91c-4645-b9a0-32d8b041fdc9"
     }
   ],
   "vars": {

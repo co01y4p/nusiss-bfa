@@ -37,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: production
-      url: https://nusiss-bfa.swmengappdev.workers.dev
+      url: https://nusiss-bfa.co01y4p.workers.dev
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
