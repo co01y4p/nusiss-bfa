@@ -1,7 +1,8 @@
 // Facilities AI Assistant — vanilla demo Worker (M1 slice: save-before-AI).
 // Site-wide gate: every page and API route requires a signed-in Google account
-// (see /login.html), except the small pre-auth allowlist below. Manager-only
-// routes additionally require the signed-in email to be on MANAGER_EMAILS.
+// (see /login.html), except the small pre-auth allowlist below. Sign-in itself
+// is restricted to the MANAGER_EMAILS allow-list — any other Google account is
+// rejected at /api/v1/auth/google, before a session is ever minted.
 //
 //   GET   /api/v1/auth/config                      (public)  {google_client_id}
 //   POST  /api/v1/auth/google                      (public)  verify Google ID token, mint session
@@ -137,6 +138,12 @@ async function handleAuthGoogle(request, env) {
 
   if (!payload.email || payload.email_verified !== true) {
     return json({ error: "Google account email not verified" }, 401);
+  }
+
+  // Access to this app is restricted to the team allow-list, not just any
+  // Google account — MANAGER_EMAILS doubles as the access gate for now.
+  if (!managerEmailSet(env).has(payload.email.toLowerCase())) {
+    return json({ error: "This Google account is not authorized to access this app" }, 403);
   }
 
   const { jwt, role } = await mintSession(payload.email, env);

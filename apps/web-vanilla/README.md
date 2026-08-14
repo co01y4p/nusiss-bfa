@@ -17,7 +17,7 @@ wrangler.jsonc   Worker config, pinned to the shared Cloudflare account
 package.json     one dependency: `jose`, used to verify/sign JWTs
 ```
 
-**Auth:** every page and API route requires a signed-in Google account (Sign In With Google, ID-token flow — see `/login.html`). Any signed-in account can report/track; the `MANAGER` role additionally requires the account's email to be on the `MANAGER_EMAILS` allow-list. `GOOGLE_CLIENT_ID`, `SESSION_SECRET`, and `MANAGER_EMAILS` are all Cloudflare secrets (`wrangler secret put <NAME>`) — none are committed to this repo.
+**Auth:** every page and API route requires a signed-in Google account (Sign In With Google, ID-token flow — see `/login.html`). Sign-in itself is restricted to the `MANAGER_EMAILS` allow-list — any other Google account is rejected at sign-in, before a session is ever created. `GOOGLE_CLIENT_ID` is a public identifier, committed directly in `wrangler.jsonc`. `SESSION_SECRET` and `MANAGER_EMAILS` are real Cloudflare secrets (`wrangler secret put <NAME>`) — not committed anywhere in this repo.
 
 ## How to work on it (collaborators)
 
@@ -35,10 +35,9 @@ cd apps/web-vanilla
 npm install
 ```
 
-Create `apps/web-vanilla/.dev.vars` (gitignored, never committed):
+Create `apps/web-vanilla/.dev.vars` (gitignored, never committed) with just the two real secrets — `GOOGLE_CLIENT_ID` already comes from the committed `wrangler.jsonc`, no need to set it here:
 
 ```dotenv
-GOOGLE_CLIENT_ID=<from whoever manages the Google Cloud Console project>
 SESSION_SECRET=<any random string, e.g. `openssl rand -hex 32`>
 MANAGER_EMAILS=<comma-separated emails that should get manager access>
 ```

@@ -9,10 +9,10 @@ Full design and milestone breakdown: [docs/plan/00-overview.md](docs/plan/00-ove
 Only **M1 (non-agentic baseline)** is built so far, as a deliberately minimal vanilla HTML/JS + Cloudflare Workers + D1 app at [apps/web-vanilla/](apps/web-vanilla/) — not yet the full Next.js + FastAPI + Postgres stack the plan describes for later milestones. No AI/agent workflow exists yet (by design — "save-before-AI": the system must work end-to-end with the AI completely absent before any agent logic is added on top).
 
 What works today:
-- **Google Sign-In gates the whole site.** Every page and API route requires a signed-in Google account; a small allow-list of emails additionally grants the `MANAGER` role.
-- **Report an issue** (any signed-in user) — creates an incident, returns an opaque tracking code.
-- **Track a report** (any signed-in user) — status lookup by tracking code, no ID enumeration.
-- **Manager queue** (`MANAGER` role only) — list all incidents, update status (`RECEIVED → IN_PROGRESS → RESOLVED → CLOSED`).
+- **Google Sign-In gates the whole site, restricted to an allow-list.** Every page and API route requires a signed-in Google account, and sign-in itself is rejected outright for any email not on the `MANAGER_EMAILS` allow-list — there's no general public access yet, only the team.
+- **Report an issue** — creates an incident, returns an opaque tracking code.
+- **Track a report** — status lookup by tracking code, no ID enumeration.
+- **Manager queue** — list all incidents, update status (`RECEIVED → IN_PROGRESS → RESOLVED → CLOSED`).
 
 Live at **https://nusiss-bfa.co01y4p.workers.dev**.
 
@@ -33,12 +33,11 @@ cd apps/web-vanilla
 npm install
 ```
 
-Create a local secrets file — `apps/web-vanilla/.dev.vars` (gitignored, never committed). It needs three values:
+Create a local secrets file — `apps/web-vanilla/.dev.vars` (gitignored, never committed). It needs two values (`GOOGLE_CLIENT_ID` already comes from the committed `wrangler.jsonc`, no need to set it here):
 
 ```dotenv
-GOOGLE_CLIENT_ID=<ask a teammate with Google Cloud Console access, or set up your own OAuth client>
 SESSION_SECRET=<any random string, e.g. output of `openssl rand -hex 32`>
-MANAGER_EMAILS=<comma-separated list of emails that should get manager access, e.g. your own>
+MANAGER_EMAILS=<comma-separated list of emails allowed to sign in at all, e.g. your own>
 ```
 
 Then initialize the local database (once) and start the dev server:
