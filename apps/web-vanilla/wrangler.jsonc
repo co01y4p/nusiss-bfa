@@ -8,7 +8,9 @@
   "assets": {
     "directory": "public",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/*"]
+    // Run the Worker for every request (not just /api/*) so it can enforce the
+    // site-wide Google sign-in gate before any static page/asset is served.
+    "run_worker_first": true
   },
   "d1_databases": [
     {
@@ -16,9 +18,5 @@
       "database_name": "nusiss-bfa-db",
       "database_id": "e659a547-a91c-4645-b9a0-32d8b041fdc9"
     }
-  ],
-  "vars": {
-    // Demo-only manager passcode (the real project uses JWT + Argon2id per M1).
-    "MANAGER_PASSCODE": "bfa-manager-2026"
-  }
+  ]
 }

@@ -7,14 +7,17 @@ A vanilla HTML/JS deployment of the M1 non-agentic slice ([plan](../../docs/plan
 ## Layout
 
 ```
-public/          static pages (index/report, track, manager) — vanilla HTML/CSS/JS
-src/worker.js    API: POST /api/v1/incidents, GET .../track/{code},
-                 GET /api/v1/incidents + PATCH .../{id}/status (manager)
+public/          static pages (login, report, track, manager) — vanilla HTML/CSS/JS
+src/worker.js    site-wide Google sign-in gate + API:
+                 POST /api/v1/auth/google, GET .../me, POST .../logout,
+                 POST /api/v1/incidents, GET .../track/{code},
+                 GET /api/v1/incidents + PATCH .../{id}/status (manager role only)
 schema.sql       D1 schema — keep it idempotent (CREATE TABLE IF NOT EXISTS ...)
 wrangler.jsonc   Worker config, pinned to the shared Cloudflare account
+package.json     one dependency: `jose`, used to verify/sign JWTs
 ```
 
-Manager passcode for the demo: `bfa-manager-2026` (env var in `wrangler.jsonc`; the real build replaces this with JWT + Argon2id per M1).
+**Auth:** every page and API route requires a signed-in Google account (Sign In With Google, ID-token flow — see `/login.html`). Any signed-in account can report/track; the `MANAGER` role additionally requires the account's email to be on the `MANAGER_EMAILS` allow-list. `GOOGLE_CLIENT_ID`, `SESSION_SECRET`, and `MANAGER_EMAILS` are all Cloudflare secrets (`wrangler secret put <NAME>`) — none are committed to this repo.
 
 ## How to work on it (collaborators)
 
@@ -29,8 +32,24 @@ Schema changes: only add idempotent statements to `schema.sql` (`IF NOT EXISTS`,
 
 ```bash
 cd apps/web-vanilla
-npx wrangler dev          # local Worker + local D1 at http://localhost:8787
-npx wrangler d1 execute nusiss-bfa-db --local --file schema.sql -y   # once, to init local DB
+npm install
 ```
+
+Create `apps/web-vanilla/.dev.vars` (gitignored, never committed):
+
+```dotenv
+GOOGLE_CLIENT_ID=<from whoever manages the Google Cloud Console project>
+SESSION_SECRET=<any random string, e.g. `openssl rand -hex 32`>
+MANAGER_EMAILS=<comma-separated emails that should get manager access>
+```
+
+Then:
+
+```bash
+npx wrangler d1 execute nusiss-bfa-db --local --file schema.sql -y   # once, to init local DB
+npx wrangler dev          # local Worker + local D1 at http://localhost:8787
+```
+
+Signing in locally requires `http://localhost:8787` to be registered as an authorized JavaScript origin on the Google OAuth client, and your Google account to be added as a test user on the consent screen (while it's in Testing status).
 
 Manual deploy (needs Cloudflare access): `npx wrangler deploy`.

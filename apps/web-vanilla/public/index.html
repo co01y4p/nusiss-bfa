@@ -14,6 +14,7 @@
       <a href="/track.html">Track a report</a>
       <a href="/manager.html">Manager</a>
     </nav>
+    <div class="session-bar" id="session-bar"></div>
   </header>
 
   <main>
@@ -53,6 +54,23 @@
   <footer class="site">NUS-ISS capstone demo harness — vanilla M1 slice on Cloudflare Workers + D1.</footer>
 
   <script>
+    (async () => {
+      const bar = document.getElementById("session-bar");
+      const res = await fetch("/api/v1/auth/me");
+      if (!res.ok) return; // gate already redirected page nav on 401; ignore here
+      const { email } = await res.json();
+      bar.innerHTML = `<span>${email}</span>`;
+      const signOut = document.createElement("button");
+      signOut.type = "button";
+      signOut.className = "small";
+      signOut.textContent = "Sign out";
+      signOut.addEventListener("click", async () => {
+        await fetch("/api/v1/auth/logout", { method: "POST" });
+        location.href = "/login.html";
+      });
+      bar.appendChild(signOut);
+    })();
+
     const form = document.getElementById("report-form");
     const result = document.getElementById("result");
     form.addEventListener("submit", async (e) => {

@@ -27,6 +27,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
+          cache-dependency-path: apps/web-vanilla/package-lock.json
+      - name: Install dependencies
+        working-directory: apps/web-vanilla
+        run: npm ci
       - name: Dry-run deploy
         working-directory: apps/web-vanilla
         run: npx wrangler@4 deploy --dry-run
@@ -43,6 +48,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
+          cache-dependency-path: apps/web-vanilla/package-lock.json
+      - name: Install dependencies
+        working-directory: apps/web-vanilla
+        run: npm ci
       - name: Apply D1 schema (idempotent)
         working-directory: apps/web-vanilla
         run: npx wrangler@4 d1 execute nusiss-bfa-db --remote --file schema.sql -y

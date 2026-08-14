@@ -14,18 +14,13 @@
       <a href="/track.html">Track a report</a>
       <a href="/manager.html" class="active">Manager</a>
     </nav>
+    <div class="session-bar" id="session-bar"></div>
   </header>
 
   <main>
-    <div class="card" id="login-card">
-      <h1>Manager sign-in</h1>
-      <p class="lede">Demo passcode auth — the full build uses JWT + Argon2id per milestone M1.</p>
-      <form id="login-form">
-        <label for="passcode">Passcode</label>
-        <input type="password" id="passcode" required />
-        <button type="submit">Sign in</button>
-      </form>
-      <div id="login-error" class="notice"></div>
+    <div class="card" id="denied-card" style="display:none">
+      <h1>Not authorized</h1>
+      <p class="lede">You're signed in, but this Google account isn't on the manager list. Ask a facility manager to add your email if you need access.</p>
     </div>
 
     <div class="card" id="list-card" style="display:none">
@@ -47,17 +42,17 @@
 
   <script>
     const STATUSES = ["RECEIVED", "IN_PROGRESS", "RESOLVED", "CLOSED"];
-    let passcode = sessionStorage.getItem("bfa_passcode") || "";
-
-    const loginCard = document.getElementById("login-card");
+    const deniedCard = document.getElementById("denied-card");
     const listCard = document.getElementById("list-card");
-    const loginError = document.getElementById("login-error");
     const listError = document.getElementById("list-error");
     const rows = document.getElementById("rows");
 
     async function loadIncidents() {
-      const res = await fetch("/api/v1/incidents", { headers: { "x-manager-passcode": passcode } });
-      if (res.status === 401) throw new Error("Wrong passcode.");
+      const res = await fetch("/api/v1/incidents");
+      if (res.status === 403) {
+        deniedCard.style.display = "block";
+        return;
+      }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to load incidents");
       rows.innerHTML = "";
@@ -76,7 +71,7 @@
           try {
             const r = await fetch(`/api/v1/incidents/${inc.id}/status`, {
               method: "PATCH",
-              headers: { "content-type": "application/json", "x-manager-passcode": passcode },
+              headers: { "content-type": "application/json" },
               body: JSON.stringify({ status: select.value }),
             });
             const d = await r.json();
@@ -106,24 +101,30 @@
         tr.appendChild(tdDate);
         rows.appendChild(tr);
       }
-      loginCard.style.display = "none";
       listCard.style.display = "block";
     }
 
-    document.getElementById("login-form").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      loginError.className = "notice";
-      passcode = document.getElementById("passcode").value;
-      try {
-        await loadIncidents();
-        sessionStorage.setItem("bfa_passcode", passcode);
-      } catch (err) {
-        loginError.className = "notice err";
-        loginError.textContent = err.message;
-      }
-    });
+    (async () => {
+      const bar = document.getElementById("session-bar");
+      const res = await fetch("/api/v1/auth/me");
+      if (!res.ok) return; // gate already redirected page nav on 401
+      const { email } = await res.json();
+      bar.innerHTML = `<span>${email}</span>`;
+      const signOut = document.createElement("button");
+      signOut.type = "button";
+      signOut.className = "small";
+      signOut.textContent = "Sign out";
+      signOut.addEventListener("click", async () => {
+        await fetch("/api/v1/auth/logout", { method: "POST" });
+        location.href = "/login.html";
+      });
+      bar.appendChild(signOut);
 
-    if (passcode) loadIncidents().catch(() => sessionStorage.removeItem("bfa_passcode"));
+      loadIncidents().catch((err) => {
+        listError.className = "notice err";
+        listError.textContent = err.message;
+      });
+    })();
   </script>
 </body>
 </html>
