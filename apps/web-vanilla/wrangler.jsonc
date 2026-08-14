@@ -18,5 +18,10 @@
       "database_name": "nusiss-bfa-db",
       "database_id": "e659a547-a91c-4645-b9a0-32d8b041fdc9"
     }
-  ]
+  ],
+  "vars": {
+    "GOOGLE_CLIENT_ID": "799575551375-bp2u6p7dinn385pr0l9jnr8br8k66l85.apps.googleusercontent.com"
+  }
+  // SESSION_SECRET and MANAGER_EMAILS are set via `wrangler secret put <NAME>`
+  // (production) and apps/web-vanilla/.dev.vars (local) — never committed here.
 }
