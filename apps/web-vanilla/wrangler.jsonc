@@ -20,6 +20,7 @@
     }
   ],
   "vars": {
+    // Google OAuth client id — public by design (it appears in the login redirect URL).
     "GOOGLE_CLIENT_ID": "799575551375-bp2u6p7dinn385pr0l9jnr8br8k66l85.apps.googleusercontent.com"
   }
   // SESSION_SECRET and MANAGER_EMAILS are set via `wrangler secret put <NAME>`
