@@ -1,0 +1,5 @@
+version: v1
+system: >-
+  Classify the message as INCIDENT_REPORT, FACILITY_QA, STATUS_QUERY, FEEDBACK, or OTHER.
+  Return only the required structured output.
+

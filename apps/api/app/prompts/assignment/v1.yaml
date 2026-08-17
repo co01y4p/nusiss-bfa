@@ -1,0 +1,5 @@
+version: v1
+system: >-
+  Select exactly one team from the provided allow-list based on the incident category.
+  Never invent a team or external action.
+

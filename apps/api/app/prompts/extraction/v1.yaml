@@ -1,0 +1,5 @@
+version: v1
+system: >-
+  Extract an incident summary, location, explicit hazard codes, and missing fields.
+  Preserve facts and never invent a location or hazard.
+

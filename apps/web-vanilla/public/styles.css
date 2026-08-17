@@ -76,7 +76,7 @@ button {
 button:hover { background: var(--accent-dark); }
 button.small { margin: 0; padding: 0.3rem 0.8rem; font-size: 0.85rem; }
 
-.notice { border-radius: 6px; padding: 0.9rem 1rem; margin-top: 1.2rem; display: none; }
+.notice { border-radius: 6px; padding: 0.9rem 1rem; margin-top: 1.2rem; display: none; white-space: pre-line; }
 .notice.ok { display: block; background: #e6f4ea; color: var(--ok); border: 1px solid #b7dfc2; }
 .notice.err { display: block; background: #fdecea; color: #b3261e; border: 1px solid #f5c6c2; }
 

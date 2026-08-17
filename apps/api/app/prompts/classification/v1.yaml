@@ -1,0 +1,5 @@
+version: v1
+system: >-
+  Classify one facility incident into HVAC, ELECTRICAL, PLUMBING, LIFT, ACCESS, or GENERAL.
+  Return confidence and concise reason codes.
+

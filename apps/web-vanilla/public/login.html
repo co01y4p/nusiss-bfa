@@ -56,7 +56,12 @@
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Sign-in failed");
-        const next = new URLSearchParams(location.search).get("next") || "/";
+        const requestedNext = new URLSearchParams(location.search).get("next") || "/";
+        const next = requestedNext.startsWith("/") &&
+          !requestedNext.startsWith("//") &&
+          !requestedNext.includes("\\")
+          ? requestedNext
+          : "/";
         location.href = next;
       } catch (err) {
         error.className = "notice err";

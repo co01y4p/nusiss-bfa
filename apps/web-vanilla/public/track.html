@@ -40,7 +40,9 @@
       const res = await fetch("/api/v1/auth/me");
       if (!res.ok) return;
       const { email } = await res.json();
-      bar.innerHTML = `<span>${email}</span>`;
+      const identity = document.createElement("span");
+      identity.textContent = email;
+      bar.replaceChildren(identity);
       const signOut = document.createElement("button");
       signOut.type = "button";
       signOut.className = "small";
@@ -64,12 +66,12 @@
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Lookup failed");
         result.className = "notice ok";
-        result.innerHTML = `
-          <strong>${data.reference_code}</strong> —
-          <span class="status ${data.status}">${data.status.replace("_", " ")}</span><br />
-          Location: ${data.location}<br />
-          Submitted: ${new Date(data.created_at).toLocaleString()}<br />
-          Last updated: ${new Date(data.updated_at).toLocaleString()}`;
+        result.textContent = [
+          `${data.reference_code} — ${data.status.replace("_", " ")}`,
+          `Location: ${data.location}`,
+          `Submitted: ${new Date(data.created_at).toLocaleString()}`,
+          `Last updated: ${new Date(data.updated_at).toLocaleString()}`,
+        ].join("\n");
       } catch (err) {
         result.className = "notice err";
         result.textContent = err.message;
