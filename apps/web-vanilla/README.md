@@ -10,7 +10,7 @@ A vanilla HTML/JS deployment of the M1 non-agentic slice ([plan](../../docs/plan
 public/          static pages (login, report, track, chat, manager) — vanilla HTML/CSS/JS
 src/worker.js    site-wide Google sign-in gate + API:
                  POST /api/v1/auth/google, GET .../me, POST .../logout,
-                 POST /api/v1/chat (Gemini 3.7 Flash chatbot),
+                 POST /api/v1/chat (Gemini 3.5 Flash Lite chatbot),
                  POST /api/v1/incidents, GET .../track/{code},
                  GET /api/v1/incidents + PATCH .../{id}/status (manager role only)
 schema.sql       D1 schema — keep it idempotent (CREATE TABLE IF NOT EXISTS ...)
@@ -42,7 +42,7 @@ Create `apps/web-vanilla/.dev.vars` (gitignored, never committed) with the local
 SESSION_SECRET=<any random string, e.g. `openssl rand -hex 32`>
 MANAGER_EMAILS=<comma-separated emails that should get manager access>
 GEMINI_API_KEY=<your Google Gemini API key from Google AI Studio>
-# Optional: GEMINI_MODEL=gemini-3.7-flash (defaults to gemini-3.7-flash)
+# Optional: GEMINI_MODEL=gemini-3.5-flash-lite (defaults to gemini-3.5-flash-lite)
 ```
 
 Then:

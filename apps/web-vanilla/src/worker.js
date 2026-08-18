@@ -8,7 +8,7 @@
 //   POST  /api/v1/auth/google                      (public)  verify Google ID token, mint session
 //   GET   /api/v1/auth/me                           (session) {email, role}
 //   POST  /api/v1/auth/logout                       (public)  clear session
-//   POST  /api/v1/chat                              (session) chat with Gemini 3.7 Flash
+//   POST  /api/v1/chat                              (session) chat with Gemini 3.5 Flash Lite
 //   POST  /api/v1/incidents                        (session)  create incident
 //   GET   /api/v1/incidents/track/:reference_code  (session)  status lookup
 //   GET   /api/v1/incidents                        (manager)  list
@@ -191,7 +191,7 @@ async function handleChat(request, env) {
     );
   }
 
-  const model = env.GEMINI_MODEL || "gemini-3.7-flash";
+  const model = env.GEMINI_MODEL || "gemini-3.5-flash-lite";
 
   // Build conversation history if provided
   const contents = [];
