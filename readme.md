@@ -10,13 +10,14 @@ Only **M1 (non-agentic baseline)** is built so far, as a deliberately minimal va
 
 What works today:
 - **Google Sign-In gates the whole site, restricted to an allow-list.** Every page and API route requires a signed-in Google account, and sign-in itself is rejected outright for any email not on the `MANAGER_EMAILS` allow-list — there's no general public access yet, only the team.
+- **Facilities AI Assistant (Chatbot)** — conversational assistant powered by Gemini 3.7 Flash to answer general building facilities questions and guide occupants.
 - **Report an issue** — creates an incident, returns an opaque tracking code.
 - **Track a report** — status lookup by tracking code, no ID enumeration.
 - **Manager queue** — list all incidents, update status (`RECEIVED → IN_PROGRESS → RESOLVED → CLOSED`).
 
 Live at **https://nusiss-bfa.co01y4p.workers.dev**.
 
-Not yet built: the multi-agent triage/routing workflow, RAG-grounded Q&A, agent security controls, evaluation suite, observability, and the full Next.js/FastAPI stack — see the milestone table in the plan overview for what's still ahead (M2–M8).
+Not yet built: the full bounded multi-agent triage/routing workflow, RAG-grounded document knowledge base, agent security controls, evaluation suite, observability, and the full Next.js/FastAPI stack — see the milestone table in the plan overview for what's still ahead (M2–M8).
 
 ## Repository structure
 
@@ -33,11 +34,12 @@ cd apps/web-vanilla
 npm install
 ```
 
-Create a local secrets file — `apps/web-vanilla/.dev.vars` (gitignored, never committed). It needs two values (`GOOGLE_CLIENT_ID` already comes from the committed `wrangler.jsonc`, no need to set it here):
+Create a local secrets file — `apps/web-vanilla/.dev.vars` (gitignored, never committed):
 
 ```dotenv
 SESSION_SECRET=<any random string, e.g. output of `openssl rand -hex 32`>
 MANAGER_EMAILS=<comma-separated list of emails allowed to sign in at all, e.g. your own>
+GEMINI_API_KEY=<your Google Gemini API key from Google AI Studio>
 ```
 
 Then initialize the local database (once) and start the dev server:

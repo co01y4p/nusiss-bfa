@@ -7,9 +7,10 @@ A vanilla HTML/JS deployment of the M1 non-agentic slice ([plan](../../docs/plan
 ## Layout
 
 ```
-public/          static pages (login, report, track, manager) — vanilla HTML/CSS/JS
+public/          static pages (login, report, track, chat, manager) — vanilla HTML/CSS/JS
 src/worker.js    site-wide Google sign-in gate + API:
                  POST /api/v1/auth/google, GET .../me, POST .../logout,
+                 POST /api/v1/chat (Gemini 3.7 Flash chatbot),
                  POST /api/v1/incidents, GET .../track/{code},
                  GET /api/v1/incidents + PATCH .../{id}/status (manager role only)
 schema.sql       D1 schema — keep it idempotent (CREATE TABLE IF NOT EXISTS ...)
@@ -17,7 +18,7 @@ wrangler.jsonc   Worker config, pinned to the shared Cloudflare account
 package.json     one dependency: `jose`, used to verify/sign JWTs
 ```
 
-**Auth:** every page and API route requires a signed-in Google account (Sign In With Google, ID-token flow — see `/login.html`). Sign-in itself is restricted to the `MANAGER_EMAILS` allow-list — any other Google account is rejected at sign-in, before a session is ever created. `GOOGLE_CLIENT_ID` is a public identifier, committed directly in `wrangler.jsonc`. `SESSION_SECRET` and `MANAGER_EMAILS` are real Cloudflare secrets (`wrangler secret put <NAME>`) — not committed anywhere in this repo.
+**Auth:** every page and API route requires a signed-in Google account (Sign In With Google, ID-token flow — see `/login.html`). Sign-in itself is restricted to the `MANAGER_EMAILS` allow-list — any other Google account is rejected at sign-in, before a session is ever created. `GOOGLE_CLIENT_ID` is a public identifier, committed directly in `wrangler.jsonc`. `SESSION_SECRET`, `MANAGER_EMAILS`, and `GEMINI_API_KEY` are real Cloudflare secrets (`wrangler secret put <NAME>`) — not committed anywhere in this repo.
 
 ## How to work on it (collaborators)
 
@@ -35,11 +36,13 @@ cd apps/web-vanilla
 npm install
 ```
 
-Create `apps/web-vanilla/.dev.vars` (gitignored, never committed) with just the two real secrets — `GOOGLE_CLIENT_ID` already comes from the committed `wrangler.jsonc`, no need to set it here:
+Create `apps/web-vanilla/.dev.vars` (gitignored, never committed) with the local secrets — `GOOGLE_CLIENT_ID` already comes from the committed `wrangler.jsonc`, no need to set it here:
 
 ```dotenv
 SESSION_SECRET=<any random string, e.g. `openssl rand -hex 32`>
 MANAGER_EMAILS=<comma-separated emails that should get manager access>
+GEMINI_API_KEY=<your Google Gemini API key from Google AI Studio>
+# Optional: GEMINI_MODEL=gemini-3.7-flash (defaults to gemini-3.7-flash)
 ```
 
 Then:

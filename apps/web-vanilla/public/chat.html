@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Assistant — Facilities AI Assistant</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="site">
+    <a class="brand" href="/">Facilities AI Assistant</a>
+    <nav>
+      <a href="/">Report an issue</a>
+      <a href="/track.html">Track a report</a>
+      <a href="/chat.html" class="active">AI Assistant</a>
+      <a href="/manager.html">Manager</a>
+    </nav>
+    <div class="session-bar" id="session-bar"></div>
+  </header>
+
+  <main>
+    <div class="card chat-card">
+      <div class="chat-header">
+        <div>
+          <h1>Facilities AI Assistant</h1>
+          <p class="lede">Ask general facilities questions, inquiry about amenities and hours, or get help reporting an issue.</p>
+        </div>
+        <div class="badge-gemini" id="model-badge">Gemini 3.7 Flash</div>
+      </div>
+
+      <div class="suggestion-chips" id="suggestion-chips">
+        <button type="button" class="chip" data-query="What are the building operating hours?">🕒 Operating hours</button>
+        <button type="button" class="chip" data-query="How do I report a facilities issue?">📝 How to report an issue</button>
+        <button type="button" class="chip" data-query="What facilities and amenities are available in the building?">🏢 Available amenities</button>
+        <button type="button" class="chip" data-query="What should I do if there is a severe water leak or hazard?">⚠️ Emergency & hazards</button>
+      </div>
+
+      <div class="chat-box" id="chat-box">
+        <div class="chat-message assistant">
+          <div class="bubble-header">Facilities Assistant</div>
+          <div class="bubble-content">Hello! I am your Facilities AI Assistant powered by Gemini. How can I help you today? You can ask me questions about building hours, amenities, or how to submit and track facility issues.</div>
+        </div>
+      </div>
+
+      <div id="typing-indicator" class="typing-indicator" style="display: none;">
+        <span class="dot"></span>
+        <span class="dot"></span>
+        <span class="dot"></span>
+        <span class="typing-text">Gemini is thinking...</span>
+      </div>
+
+      <form id="chat-form" class="chat-form">
+        <div class="chat-input-wrapper">
+          <textarea
+            id="chat-input"
+            rows="1"
+            maxlength="2000"
+            placeholder="Ask a question about building facilities (Press Enter to send)..."
+            required
+          ></textarea>
+        </div>
+        <div class="chat-actions">
+          <button type="button" class="small secondary" id="clear-btn">Clear chat</button>
+          <button type="submit" id="send-btn">Send</button>
+        </div>
+      </form>
+      <div id="chat-error" class="notice"></div>
+    </div>
+  </main>
+
+  <footer class="site">NUS-ISS capstone demo harness — vanilla M1 slice on Cloudflare Workers + D1.</footer>
+
+  <script>
+    (async () => {
+      const bar = document.getElementById("session-bar");
+      const res = await fetch("/api/v1/auth/me");
+      if (!res.ok) return;
+      const { email } = await res.json();
+      const span = document.createElement("span");
+      span.textContent = email;
+      bar.replaceChildren(span);
+
+      const signOut = document.createElement("button");
+      signOut.type = "button";
+      signOut.className = "small";
+      signOut.textContent = "Sign out";
+      signOut.addEventListener("click", async () => {
+        await fetch("/api/v1/auth/logout", { method: "POST" });
+        location.href = "/login.html";
+      });
+      bar.appendChild(signOut);
+    })();
+
+    const chatBox = document.getElementById("chat-box");
+    const chatForm = document.getElementById("chat-form");
+    const chatInput = document.getElementById("chat-input");
+    const sendBtn = document.getElementById("send-btn");
+    const clearBtn = document.getElementById("clear-btn");
+    const typingIndicator = document.getElementById("typing-indicator");
+    const chatError = document.getElementById("chat-error");
+    const chips = document.getElementById("suggestion-chips");
+
+    // In-memory conversation history
+    const conversationHistory = [];
+
+    function appendMessage(role, text) {
+      const msgDiv = document.createElement("div");
+      msgDiv.className = `chat-message ${role}`;
+
+      const headerDiv = document.createElement("div");
+      headerDiv.className = "bubble-header";
+      headerDiv.textContent = role === "user" ? "You" : "Facilities Assistant";
+
+      const contentDiv = document.createElement("div");
+      contentDiv.className = "bubble-content";
+      contentDiv.textContent = text;
+
+      msgDiv.appendChild(headerDiv);
+      msgDiv.appendChild(contentDiv);
+      chatBox.appendChild(msgDiv);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function showTyping(show) {
+      typingIndicator.style.display = show ? "flex" : "none";
+      if (show) chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function showError(msg) {
+      if (!msg) {
+        chatError.className = "notice";
+        chatError.replaceChildren();
+        chatError.style.display = "none";
+        return;
+      }
+      chatError.className = "notice err";
+      chatError.style.display = "block";
+      chatError.textContent = msg;
+    }
+
+    async function sendMessage(text) {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+
+      showError(null);
+      appendMessage("user", trimmed);
+      chatInput.value = "";
+      chatInput.style.height = "auto";
+      chatInput.disabled = true;
+      sendBtn.disabled = true;
+      showTyping(true);
+
+      try {
+        const payload = {
+          message: trimmed,
+          history: conversationHistory,
+        };
+
+        const res = await fetch("/api/v1/chat", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || `Error ${res.status}: Failed to get response`);
+        }
+
+        appendMessage("assistant", data.reply);
+        conversationHistory.push({ role: "user", content: trimmed });
+        conversationHistory.push({ role: "model", content: data.reply });
+
+        // Update badge model name if returned
+        if (data.model) {
+          const badge = document.getElementById("model-badge");
+          if (badge) badge.textContent = data.model;
+        }
+      } catch (err) {
+        showError(err.message || "Failed to communicate with AI Assistant");
+      } finally {
+        showTyping(false);
+        chatInput.disabled = false;
+        sendBtn.disabled = false;
+        chatInput.focus();
+      }
+    }
+
+    chatForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      sendMessage(chatInput.value);
+    });
+
+    chatInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        chatForm.dispatchEvent(new Event("submit"));
+      }
+    });
+
+    // Auto-resize textarea
+    chatInput.addEventListener("input", () => {
+      chatInput.style.height = "auto";
+      chatInput.style.height = Math.min(chatInput.scrollHeight, 160) + "px";
+    });
+
+    clearBtn.addEventListener("click", () => {
+      conversationHistory.length = 0;
+      chatBox.replaceChildren();
+      showError(null);
+      appendMessage("assistant", "Chat history cleared. How can I help you today?");
+    });
+
+    // Chips click handler
+    chips.addEventListener("click", (e) => {
+      const chip = e.target.closest(".chip");
+      if (chip && chip.dataset.query) {
+        sendMessage(chip.dataset.query);
+      }
+    });
+  </script>
+</body>
+</html>
