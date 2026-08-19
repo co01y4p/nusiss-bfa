@@ -3,88 +3,159 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Facilities AI Assistant</title>
+  <title>Report an Issue — Facilities AI Assistant</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <header class="site">
-    <a class="brand" href="/">Facilities AI Assistant</a>
+    <a class="brand-wrapper" href="/">
+      <div class="brand-icon">🏢</div>
+      <span class="brand-text">Facilities AI</span>
+      <span class="brand-badge">Hub</span>
+    </a>
     <nav>
-      <a href="/" class="active">Report an issue</a>
-      <a href="/track.html">Track a report</a>
-      <a href="/chat.html">AI Assistant</a>
-      <a href="/manager.html">Manager</a>
+      <a href="/" class="active"><span>📝</span> Report Issue</a>
+      <a href="/track.html"><span>🔍</span> Track Report</a>
+      <a href="/chat.html"><span>✨</span> AI Assistant</a>
+      <a href="/manager.html"><span>📊</span> Manager</a>
     </nav>
     <div class="session-bar" id="session-bar"></div>
   </header>
 
   <main>
-    <div class="card">
-      <h1>Report a facility issue</h1>
-      <p class="lede">Leaks, electrical faults, broken lifts, or anything else — describe the issue and where it is. You'll get a reference code to track its status.</p>
+    <div class="page-grid-2col">
+      <!-- Main Reporting Form Column -->
+      <section>
+        <div class="card">
+          <div class="card-header-clean">
+            <h1>Report a Facility Issue</h1>
+            <p class="lede">Submit incident details for fast triage and dispatch. You will receive a secure reference code to monitor real-time progress.</p>
+          </div>
 
-      <form id="report-form">
-        <label for="location">Location</label>
-        <input type="text" id="location" name="location" maxlength="200" placeholder="e.g. Block B, Level 3, near lift lobby" required />
+          <label>Quick Issue Category</label>
+          <div class="category-chips" id="category-chips">
+            <button type="button" class="category-chip" data-cat="[Plumbing / Water Leak]">💧 Plumbing / Leak</button>
+            <button type="button" class="category-chip" data-cat="[Electrical / Lighting]">⚡ Electrical / Power</button>
+            <button type="button" class="category-chip" data-cat="[Air Conditioning / HVAC]">❄️ Aircon / HVAC</button>
+            <button type="button" class="category-chip" data-cat="[Lift / Access System]">🛗 Lift / Access</button>
+            <button type="button" class="category-chip" data-cat="[General Maintenance]">🧹 General Repair</button>
+          </div>
 
-        <label for="description">Description</label>
-        <textarea id="description" name="description" maxlength="4000" placeholder="What's wrong? Include any hazards (smoke, gas smell, exposed wiring...)" required></textarea>
+          <form id="report-form">
+            <label for="location">Location <span class="label-hint">(Building, Level, Room or nearby landmark)</span></label>
+            <input type="text" id="location" name="location" maxlength="200" placeholder="e.g. Block B, Level 3, near east lift lobby" required />
 
-        <button type="submit">Submit report</button>
-      </form>
+            <label for="description">Issue Description <span class="label-hint">(Include symptoms, urgency, or hazards)</span></label>
+            <textarea id="description" name="description" maxlength="4000" placeholder="Describe what is wrong in detail (e.g. water dripping from ceiling tile, flickering light fixture, elevator door jammed)..." required></textarea>
 
-      <div id="result" class="notice"></div>
-    </div>
+            <button type="submit" id="submit-btn" style="margin-top: 1.25rem;">
+              <span>Submit Issue Report</span>
+              <span>➔</span>
+            </button>
+          </form>
 
-    <div class="grid">
-      <div class="card">
-        <h2>AI Assistant</h2>
-        <p>Ask building questions, operating hours, amenities, and reporting guidance directly to our <a href="/chat.html">Gemini-powered chatbot</a>.</p>
-      </div>
-      <div class="card">
-        <h2>Save-before-AI</h2>
-        <p>Every report is persisted first and manageable with zero AI involvement — the AI triage layer sits on top, never in the critical path.</p>
-      </div>
-      <div class="card">
-        <h2>Track anytime</h2>
-        <p>Your reference code is opaque — no sequential IDs, no enumeration. Use it on the <a href="/track.html">tracking page</a>.</p>
-      </div>
-      <div class="card">
-        <h2>Manager review</h2>
-        <p>Facility managers review, update status, and operate the system from the <a href="/manager.html">manager view</a>.</p>
-      </div>
+          <div id="result" class="notice"></div>
+        </div>
+      </section>
+
+      <!-- Side Helper & Widgets Column -->
+      <aside>
+        <!-- AI Assistant Highlight -->
+        <div class="side-card ai-highlight">
+          <h3>✨ Facilities AI Copilot</h3>
+          <p class="lede" style="font-size: 0.86rem; margin-top: 0.25rem;">Have questions about building amenities, hours, or emergency procedures?</p>
+          <a href="/chat.html" class="btn btn-small outline" style="margin-top: 0.85rem; width: 100%; text-decoration: none;">
+            <span>Chat with Assistant</span> <span>➔</span>
+          </a>
+        </div>
+
+        <!-- Quick Track Widget -->
+        <div class="side-card">
+          <h3>🔍 Quick Track</h3>
+          <p class="lede" style="font-size: 0.86rem; margin-top: 0.25rem;">Already have a reference code?</p>
+          <form id="quick-track-form" style="margin-top: 0.65rem;" onsubmit="event.preventDefault(); const c = document.getElementById('quick-code').value.trim(); if(c) location.href='/track.html?code=' + encodeURIComponent(c);">
+            <input type="text" id="quick-code" placeholder="e.g. BFA-1A2B3C4D" style="font-size: 0.85rem; padding: 0.5rem 0.7rem;" required />
+            <button type="submit" class="small secondary" style="width: 100%; margin-top: 0.5rem;">Check Status</button>
+          </form>
+        </div>
+
+        <!-- Emergency Protocols -->
+        <div class="side-card">
+          <h3>🚨 Urgent & Hazard Contacts</h3>
+          <p class="lede" style="font-size: 0.84rem; margin-top: 0.25rem;">For immediate safety hazards (fire, severe gas smell, electrical sparks):</p>
+          <div style="margin-top: 0.65rem; font-size: 0.84rem; line-height: 1.6; color: var(--text-body);">
+            <div><strong>• 24/7 Security:</strong> 6874 1616</div>
+            <div><strong>• Facilities Hotline:</strong> Ext. 8000</div>
+            <div><strong>• Life Safety / Fire:</strong> 995</div>
+          </div>
+        </div>
+      </aside>
     </div>
   </main>
 
-  <footer class="site">NUS-ISS capstone demo harness — vanilla M1 slice on Cloudflare Workers + D1.</footer>
+  <footer class="site">
+    NUS-ISS Facilities AI Assistant &bull; Intelligent Building Operations Platform
+  </footer>
 
   <script>
+    // Session state
     (async () => {
       const bar = document.getElementById("session-bar");
-      const res = await fetch("/api/v1/auth/me");
-      if (!res.ok) return; // gate already redirected page nav on 401; ignore here
-      const { email } = await res.json();
-      bar.innerHTML = `<span>${email}</span>`;
-      const signOut = document.createElement("button");
-      signOut.type = "button";
-      signOut.className = "small";
-      signOut.textContent = "Sign out";
-      signOut.addEventListener("click", async () => {
-        await fetch("/api/v1/auth/logout", { method: "POST" });
-        location.href = "/login.html";
-      });
-      bar.appendChild(signOut);
+      try {
+        const res = await fetch("/api/v1/auth/me");
+        if (!res.ok) return;
+        const { email } = await res.json();
+        bar.innerHTML = `
+          <div class="user-pill">
+            <span class="user-status-dot"></span>
+            <span>${email}</span>
+          </div>
+          <button type="button" class="small secondary" id="signout-btn">Sign out</button>
+        `;
+        document.getElementById("signout-btn").addEventListener("click", async () => {
+          await fetch("/api/v1/auth/logout", { method: "POST" });
+          location.href = "/login.html";
+        });
+      } catch (e) {}
     })();
 
+    // Category chips quick selector
+    const chips = document.getElementById("category-chips");
+    const descTextarea = document.getElementById("description");
+    chips.addEventListener("click", (e) => {
+      const chip = e.target.closest(".category-chip");
+      if (!chip) return;
+      
+      chips.querySelectorAll(".category-chip").forEach(c => c.classList.remove("active"));
+      chip.classList.add("active");
+      
+      const tag = chip.dataset.cat;
+      const current = descTextarea.value;
+      if (!current.startsWith("[")) {
+        descTextarea.value = tag + " " + current;
+      } else {
+        descTextarea.value = tag + " " + current.replace(/^\[[^\]]+\]\s*/, "");
+      }
+      descTextarea.focus();
+    });
+
+    // Form Submission
     const form = document.getElementById("report-form");
     const result = document.getElementById("result");
+    const submitBtn = document.getElementById("submit-btn");
+
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       result.className = "notice";
+      result.style.display = "none";
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = `<span>Submitting...</span>`;
+
       const payload = {
         location: document.getElementById("location").value.trim(),
-        description: document.getElementById("description").value.trim(),
+        description: descTextarea.value.trim(),
       };
+
       try {
         const res = await fetch("/api/v1/incidents", {
           method: "POST",
@@ -93,12 +164,37 @@
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Submission failed");
+
         result.className = "notice ok";
-        result.innerHTML = `Report received. Your reference code is <code class="ref">${data.reference_code}</code> — save it to track status.`;
+        result.innerHTML = `
+          <div style="font-weight: 700; font-size: 1rem; margin-bottom: 0.35rem;">✓ Incident report logged successfully</div>
+          <div>Your tracking reference code has been generated. Keep this code to track progress:</div>
+          <div class="ref-box">
+            <code class="ref" id="ref-code-display">${data.reference_code}</code>
+            <div style="display: flex; gap: 0.5rem;">
+              <button type="button" class="small secondary" id="copy-ref-btn">📋 Copy Code</button>
+              <a href="/track.html?code=${encodeURIComponent(data.reference_code)}" class="btn btn-small">Track Status ➔</a>
+            </div>
+          </div>
+        `;
+        result.style.display = "block";
         form.reset();
+        chips.querySelectorAll(".category-chip").forEach(c => c.classList.remove("active"));
+
+        document.getElementById("copy-ref-btn").addEventListener("click", () => {
+          navigator.clipboard.writeText(data.reference_code);
+          const btn = document.getElementById("copy-ref-btn");
+          btn.textContent = "✓ Copied!";
+          setTimeout(() => { btn.textContent = "📋 Copy Code"; }, 2000);
+        });
+
       } catch (err) {
         result.className = "notice err";
-        result.textContent = err.message;
+        result.style.display = "block";
+        result.textContent = err.message || "Failed to submit incident report";
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = `<span>Submit Issue Report</span> <span>➔</span>`;
       }
     });
   </script>
