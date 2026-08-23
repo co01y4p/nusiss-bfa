@@ -13,6 +13,8 @@ from app.agents.review import ReviewAgent
 from app.agents.security import SecurityAgent
 from app.core.config import Settings
 from app.domain.incidents.models import IncidentCreate
+from app.rag.citation_validator import CitationValidator
+from app.rag.retriever import KnowledgeRetriever
 from app.repositories.interfaces.incidents import IncidentRepository, WorkflowRunRepository
 from app.services.incident_service import IncidentService
 from app.workflows.state import WorkflowState
@@ -41,6 +43,8 @@ class FacilityWorkflow:
         assignment: AssignmentAgent,
         response: ResponseAgent,
         review: ReviewAgent,
+        retriever: KnowledgeRetriever | None = None,
+        citation_validator: CitationValidator | None = None,
     ) -> None:
         self.settings = settings
         self.incidents = incident_repository
@@ -53,6 +57,8 @@ class FacilityWorkflow:
         self.assignment = assignment
         self.response = response
         self.review = review
+        self.retriever = retriever
+        self.citation_validator = citation_validator or CitationValidator()
 
     def _check_bounds(self, state: WorkflowState, *, model_call: bool = False) -> None:
         if state.step_count >= self.settings.max_agent_steps:
@@ -191,49 +197,122 @@ class FacilityWorkflow:
             requires_human_review=priority.requires_human_review or bool(extraction.missing_fields),
         )
 
+        retrieved_chunks = []
+        if self.retriever:
+            retrieved_chunks = await self.retriever.search(
+                state.input_text, top_k=3, access_scope="PUBLIC", must_be_approved=True
+            )
+
+        chunks_data = [c.model_dump(mode="json") for c in retrieved_chunks]
         self._record(
             state,
             "incident_retrieval",
-            {"chunks": []},
-            ["RAG_DEFERRED_TO_M3", "NO_APPROVED_CONTEXT"],
+            {"chunks": chunks_data, "count": len(chunks_data)},
+            ["APPROVED_CONTEXT_RETRIEVED"] if chunks_data else ["NO_APPROVED_CONTEXT"],
         )
         response_payload: dict[str, Any] = {
             "reference_code": incident.reference_code,
             "priority": priority.priority.value,
             "assigned_team": assignment.team.value,
-            "retrieval_chunks": [],
+            "retrieval_chunks": chunks_data,
         }
         self._check_bounds(state, model_call=True)
         response = await self.response.run(response_payload)
         self._record_model_output(state, "incident_response", response)
-        await self._review_and_finalize(state, response.message, response.citations)
+        await self._review_and_finalize(
+            state, response.message, response.citations, retrieved_chunks=retrieved_chunks
+        )
 
     async def _faq_path(self, state: WorkflowState, payload: dict[str, Any]) -> None:
+        retrieved_chunks = []
+        if self.retriever:
+            retrieved_chunks = await self.retriever.search(
+                state.input_text,
+                top_k=self.settings.rag_top_k,
+                access_scope="PUBLIC",
+                must_be_approved=True,
+            )
+
+        chunks_data = [c.model_dump(mode="json") for c in retrieved_chunks]
         self._record(
             state,
             "faq_retrieval",
-            {"query": state.input_text, "chunks": []},
-            ["RAG_DEFERRED_TO_M3", "NO_APPROVED_CONTEXT"],
+            {"query": state.input_text, "chunks": chunks_data, "count": len(chunks_data)},
+            ["APPROVED_CONTEXT_RETRIEVED"] if chunks_data else ["NO_APPROVED_CONTEXT"],
         )
+
+        if not retrieved_chunks:
+            # Fallback when no approved knowledge exists for the query
+            state.outcome = "FINALIZED"
+            state.final_response = (
+                "I do not have enough approved facility information to answer that question."
+            )
+            self._record(
+                state,
+                "finalize",
+                {"message": state.final_response},
+                ["NO_APPROVED_CONTEXT_FALLBACK"],
+            )
+            return
+
         self._check_bounds(state, model_call=True)
-        response = await self.response.run({**payload, "retrieval_chunks": []})
+        response = await self.response.run({**payload, "retrieval_chunks": chunks_data})
         self._record_model_output(state, "faq_response", response)
-        await self._review_and_finalize(state, response.message, response.citations)
+
+        # Citation validation
+        val_result = self.citation_validator.validate(
+            response_text=response.message,
+            citations=response.citations,
+            retrieved_chunks=retrieved_chunks,
+        )
+        self._record(
+            state,
+            "citation_validation",
+            {
+                "is_valid": val_result.is_valid,
+                "valid_citations": val_result.valid_citations,
+                "invalid_citations": val_result.invalid_citations,
+                "issues": val_result.issues,
+            },
+            val_result.reason_codes,
+        )
+
+        await self._review_and_finalize(
+            state,
+            response.message,
+            response.citations,
+            retrieved_chunks=retrieved_chunks,
+            validator_issues=val_result.issues if not val_result.is_valid else None,
+        )
 
     async def _review_and_finalize(
-        self, state: WorkflowState, message: str, citations: list[str]
+        self,
+        state: WorkflowState,
+        message: str,
+        citations: list[str],
+        retrieved_chunks: list[Any] | None = None,
+        validator_issues: list[str] | None = None,
     ) -> None:
+        del retrieved_chunks
         self._check_bounds(state, model_call=True)
-        review = await self.review.run({"message": message, "citations": citations})
+        review = await self.review.run(
+            {"message": message, "citations": citations, "issues": validator_issues or []}
+        )
         self._record_model_output(state, "review", review)
-        if review.approved:
+        if review.approved and not validator_issues:
             state.outcome = "FINALIZED"
             state.final_response = message
             self._record(state, "finalize", {"message": message}, ["REVIEW_APPROVED"])
         else:
+            issues = (validator_issues or []) + review.issues
             state.outcome = "HUMAN_REVIEW"
             state.final_response = "A facility manager will review this request."
-            self._record(state, "human_review", {"issues": review.issues}, review.reason_codes)
+            self._record(
+                state,
+                "human_review",
+                {"issues": issues},
+                review.reason_codes or ["CITATION_OR_SAFETY_REJECTED"],
+            )
 
     def _save_run(self, state: WorkflowState) -> None:
         self.runs.save(

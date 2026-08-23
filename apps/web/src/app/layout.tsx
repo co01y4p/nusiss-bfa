@@ -21,6 +21,7 @@ export default function RootLayout({
           <nav aria-label="Primary navigation">
             <Link href="/report">Report</Link>
             <Link href="/assistant">Assistant</Link>
+            <Link href="/knowledge">Knowledge (RAG)</Link>
             <Link href="/track">Track</Link>
             <Link href="/manager">Manager</Link>
           </nav>

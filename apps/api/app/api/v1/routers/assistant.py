@@ -19,10 +19,14 @@ from app.core.database import get_db
 from app.llm.fake import FakeStructuredLLM
 from app.llm.gateway import StructuredLLM
 from app.llm.providers.openai_compatible import OpenAICompatibleStructuredLLM
+from app.rag.citation_validator import CitationValidator
+from app.rag.embeddings import EmbeddingProvider, FakeEmbeddings, OpenAICompatibleEmbeddings
+from app.rag.retriever import KnowledgeRetriever
 from app.repositories.postgres.incidents import (
     SqlAlchemyIncidentRepository,
     SqlAlchemyWorkflowRunRepository,
 )
+from app.repositories.postgres.knowledge import SqlAlchemyKnowledgeRepository
 from app.security.authentication import CurrentUser, require_manager
 from app.workflows.facility_graph import FacilityWorkflow
 
@@ -52,18 +56,42 @@ class TraceResponse(StrictAgentModel):
 def build_llm(settings: Settings) -> StructuredLLM:
     if settings.llm_provider == "fake":
         return FakeStructuredLLM()
-    if settings.llm_provider in {"openai", "openrouter"}:
-        if not settings.llm_base_url or not settings.llm_api_key:
+    if settings.llm_provider in {"openai", "openrouter", "gemini"}:
+        base_url = settings.llm_base_url
+        if settings.llm_provider == "gemini" and not base_url:
+            base_url = "https://generativelanguage.googleapis.com/v1beta/openai"
+        if not base_url or not settings.llm_api_key:
             raise RuntimeError("External LLM provider is not configured")
         return OpenAICompatibleStructuredLLM(
-            base_url=settings.llm_base_url,
+            base_url=base_url,
             api_key=settings.llm_api_key,
         )
     raise RuntimeError(f"Unsupported LLM provider: {settings.llm_provider}")
 
 
+def build_embeddings(settings: Settings) -> EmbeddingProvider:
+    has_keys = bool(settings.llm_base_url and settings.llm_api_key)
+    if settings.llm_provider in {"openai", "openrouter"} and has_keys:
+        return OpenAICompatibleEmbeddings(
+            base_url=settings.llm_base_url,
+            api_key=settings.llm_api_key,
+            model=settings.embedding_model,
+        )
+    return FakeEmbeddings(dim=settings.embedding_dim)
+
+
 def build_workflow(db: Session, settings: Settings) -> FacilityWorkflow:
     llm = build_llm(settings)
+    embeddings = build_embeddings(settings)
+    knowledge_repo = SqlAlchemyKnowledgeRepository(db)
+    retriever = KnowledgeRetriever(
+        repository=knowledge_repo,
+        embeddings=embeddings,
+        default_top_k=settings.rag_top_k,
+        default_similarity_threshold=settings.rag_similarity_threshold,
+    )
+    citation_validator = CitationValidator()
+
     return FacilityWorkflow(
         settings=settings,
         incident_repository=SqlAlchemyIncidentRepository(db),
@@ -106,6 +134,8 @@ def build_workflow(db: Session, settings: Settings) -> FacilityWorkflow:
             model=settings.classifier_model,
             timeout_seconds=settings.agent_timeout_seconds,
         ),
+        retriever=retriever,
+        citation_validator=citation_validator,
     )
 
 

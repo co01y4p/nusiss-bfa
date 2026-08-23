@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     classifier_model: str = "fake-classifier"
     generator_model: str = "fake-generator"
+    embedding_model: str = "text-embedding-3-small"
+    embedding_dim: int = 1536
+    rag_top_k: int = 5
+    rag_similarity_threshold: float = 0.25
 
     max_agent_steps: int = 16
     max_model_calls: int = 10

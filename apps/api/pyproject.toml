@@ -53,5 +53,5 @@ strict = true
 exclude = ["migrations"]
 
 [[tool.mypy.overrides]]
-module = ["jwt", "yaml"]
+module = ["jwt", "yaml", "pypdf"]
 ignore_missing_imports = true

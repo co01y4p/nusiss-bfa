@@ -140,11 +140,33 @@ class FakeStructuredLLM:
             }
         if schema_name == "ResponseOutput":
             reference = payload.get("reference_code")
+            chunks = payload.get("retrieval_chunks", [])
             if reference:
                 content = f"Your report has been saved. Reference: {reference}."
+                citations = []
+                reasons = ["SAFE_TEMPLATE"]
+            elif isinstance(chunks, list) and len(chunks) > 0:
+                first_chunk = chunks[0]
+                chunk_id = str(first_chunk.get("chunk_id") or first_chunk.get("id") or "")
+                heading = str(first_chunk.get("heading") or "Facility Guidelines")
+                chunk_content = str(first_chunk.get("content") or "")
+                # Clean content snippet
+                lines = [
+                    ln.strip()
+                    for ln in chunk_content.splitlines()
+                    if ln.strip() and not ln.startswith("[")
+                ]
+                snippet = lines[0] if lines else chunk_content[:100]
+                content = f"According to {heading}: {snippet}"
+                citations = [chunk_id] if chunk_id else []
+                reasons = ["RAG_GROUNDED"]
             else:
-                content = "I do not have enough approved facility information to answer that yet."
-            return {"message": content, "citations": [], "reason_codes": ["SAFE_TEMPLATE"]}
+                content = (
+                    "I do not have enough approved facility information to answer that question."
+                )
+                citations = []
+                reasons = ["NO_APPROVED_CONTEXT"]
+            return {"message": content, "citations": citations, "reason_codes": reasons}
         if schema_name == "ReviewOutput":
             return {"approved": True, "issues": [], "reason_codes": ["SCHEMA_VALID"]}
         raise ValueError(f"No fake response is registered for {schema_name}")

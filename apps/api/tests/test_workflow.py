@@ -78,8 +78,6 @@ async def test_faq_path_uses_safe_no_context_response() -> None:
         "security",
         "intent",
         "faq_retrieval",
-        "faq_response",
-        "review",
         "finalize",
     ]
 
