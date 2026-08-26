@@ -4,6 +4,9 @@
 // is restricted to the MANAGER_EMAILS allow-list — any other Google account is
 // rejected at /api/v1/auth/google, before a session is ever minted.
 //
+// Local dev: set DISABLE_LOGIN=true in .dev.vars to skip Google sign-in
+// entirely and act as a manager. Off by default (login enforced).
+//
 //   GET   /api/v1/auth/config                      (public)  {google_client_id}
 //   POST  /api/v1/auth/google                      (public)  verify Google ID token, mint session
 //   GET   /api/v1/auth/me                           (session) {email, role}
@@ -110,9 +113,19 @@ function isManager(session) {
   return session?.role === "MANAGER";
 }
 
+// Local-dev escape hatch: set DISABLE_LOGIN=true in .dev.vars to skip the
+// Google sign-in gate entirely and act as a manager. Defaults to unset
+// (login enforced) so it must be opted into — never set this in production.
+const DEV_SESSION = { email: "angyupin159753@gmail.com", role: "MANAGER" };
+
+function authDisabled(env) {
+  return (env.DISABLE_LOGIN ?? "").toString().trim().toLowerCase() === "true";
+}
+
 async function handleAuthConfig(env) {
+  if (authDisabled(env)) return json({ disable_login: true });
   if (!env.GOOGLE_CLIENT_ID) return json({ error: "Google sign-in not configured" }, 500);
-  return json({ google_client_id: env.GOOGLE_CLIENT_ID });
+  return json({ google_client_id: env.GOOGLE_CLIENT_ID, disable_login: false });
 }
 
 async function handleAuthGoogle(request, env) {
@@ -155,8 +168,7 @@ async function handleAuthGoogle(request, env) {
   );
 }
 
-async function handleAuthMe(request, env) {
-  const session = await verifySession(request, env);
+async function handleAuthMe(session) {
   if (!session) return json({ error: "Unauthorized" }, 401);
   return json({ email: session.email, role: session.role });
 }
@@ -287,14 +299,19 @@ export default {
       if (path === "/api/v1/auth/logout" && method === "POST") return handleAuthLogout();
 
       // --- Site-wide session gate ---
-      const session = PRE_AUTH_PATHS.has(path) ? null : await verifySession(request, env);
-      if (!PRE_AUTH_PATHS.has(path) && !session) {
+      const bypassAuth = authDisabled(env);
+      const session = bypassAuth
+        ? DEV_SESSION
+        : PRE_AUTH_PATHS.has(path)
+        ? null
+        : await verifySession(request, env);
+      if (!bypassAuth && !PRE_AUTH_PATHS.has(path) && !session) {
         if (path.startsWith("/api/")) return json({ error: "Unauthorized" }, 401);
         const next = encodeURIComponent(path + url.search);
         return Response.redirect(`${url.origin}/login?next=${next}`, 302);
       }
 
-      if (path === "/api/v1/auth/me" && method === "GET") return handleAuthMe(request, env);
+      if (path === "/api/v1/auth/me" && method === "GET") return handleAuthMe(session);
       if (path === "/api/v1/chat" && method === "POST") return handleChat(request, env);
 
       // --- Incident routes (any signed-in session) ---

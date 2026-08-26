@@ -43,6 +43,9 @@ SESSION_SECRET=<any random string, e.g. `openssl rand -hex 32`>
 MANAGER_EMAILS=<comma-separated emails that should get manager access>
 GEMINI_API_KEY=<your Google Gemini API key from Google AI Studio>
 # Optional: GEMINI_MODEL=gemini-3.5-flash-lite (defaults to gemini-3.5-flash-lite)
+# Optional: DISABLE_LOGIN=true — skips the Google sign-in gate entirely and
+# treats every request as a manager session. Off by default (login enforced);
+# only set this locally, never in production.
 ```
 
 Then:
@@ -52,6 +55,6 @@ npx wrangler d1 execute nusiss-bfa-db --local --file schema.sql -y   # once, to 
 npx wrangler dev          # local Worker + local D1 at http://localhost:8787
 ```
 
-Signing in locally requires `http://localhost:8787` to be registered as an authorized JavaScript origin on the Google OAuth client, and your Google account to be added as a test user on the consent screen (while it's in Testing status).
+Signing in locally requires `http://localhost:8787` to be registered as an authorized JavaScript origin on the Google OAuth client, and your Google account to be added as a test user on the consent screen (while it's in Testing status). To skip Google sign-in entirely during local development, set `DISABLE_LOGIN=true` in `.dev.vars` — every request is then treated as a manager session, no `/login.html` redirect. Leave it unset (or `false`) to keep login enforced, which is the default.
 
 Manual deploy (needs Cloudflare access): `npx wrangler deploy`.
