@@ -59,9 +59,22 @@ class CitationValidator:
             response_words = [
                 w.lower()
                 for w in re.findall(r"\b[a-zA-Z]{4,}\b", response_text)
-                if w.lower() not in {
-                    "this", "that", "with", "from", "have", "been", "were", "your",
-                    "please", "contact", "facility", "building", "information", "report"
+                if w.lower()
+                not in {
+                    "this",
+                    "that",
+                    "with",
+                    "from",
+                    "have",
+                    "been",
+                    "were",
+                    "your",
+                    "please",
+                    "contact",
+                    "facility",
+                    "building",
+                    "information",
+                    "report",
                 }
             ]
             if response_words:

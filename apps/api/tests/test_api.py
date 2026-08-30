@@ -6,6 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.core.config import Settings, get_settings
 from app.core.database import Base, get_db
 from app.core.models import UserModel
 from app.main import app
@@ -37,6 +38,12 @@ def client() -> Generator[TestClient, None, None]:
         session.commit()
 
     app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        app_env="test",
+        llm_provider="fake",
+        classifier_model="fake-classifier",
+        generator_model="fake-generator",
+    )
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
@@ -88,7 +95,7 @@ def test_invalid_manager_credentials_are_rejected(client: TestClient) -> None:
     assert response.status_code == 401
 
 
-def test_fake_assistant_persists_triage_and_protects_trace(client: TestClient) -> None:
+def test_assistant_persists_triage_and_protects_trace(client: TestClient) -> None:
     assistant_response = client.post(
         "/api/v1/assistant/messages",
         json={

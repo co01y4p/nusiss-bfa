@@ -83,9 +83,7 @@ class DocumentParser:
             # Fallback basic text extraction from PDF stream if pypdf is not installed
             text_matches = re.findall(rb"\(([^\(\)]+)\)\s*Tj", raw_bytes)
             if text_matches:
-                return "\n".join(
-                    m.decode("latin1", errors="ignore") for m in text_matches
-                ).strip()
+                return "\n".join(m.decode("latin1", errors="ignore") for m in text_matches).strip()
             # If plain ascii bytes contain text
             ascii_text = "".join(
                 chr(b) if 32 <= b <= 126 or b in (10, 13) else " " for b in raw_bytes

@@ -166,7 +166,7 @@ class FacilityWorkflow:
 
         priority_payload = {
             "text": state.input_text,
-            "hazard_codes": extraction.hazard_codes,
+            "hazard_codes": [code.value for code in extraction.hazard_codes],
             "category": classification.category.value,
         }
         self._check_bounds(state, model_call=True)
@@ -296,7 +296,15 @@ class FacilityWorkflow:
         del retrieved_chunks
         self._check_bounds(state, model_call=True)
         review = await self.review.run(
-            {"message": message, "citations": citations, "issues": validator_issues or []}
+            {
+                "response_type": (
+                    "INCIDENT_ACKNOWLEDGEMENT" if state.incident_id else "FACILITY_ANSWER"
+                ),
+                "message": message,
+                "citations": citations,
+                "reference_code": state.reference_code,
+                "validator_issues": validator_issues or [],
+            }
         )
         self._record_model_output(state, "review", review)
         if review.approved and not validator_issues:

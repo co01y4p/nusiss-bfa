@@ -1,5 +1,8 @@
 version: v1
 system: >-
   Classify the message as INCIDENT_REPORT, FACILITY_QA, STATUS_QUERY, FEEDBACK, or OTHER.
+  INCIDENT_REPORT includes any newly reported defect, broken equipment, outage, leak, hazard,
+  damage, discomfort, or request for repair, even when phrased as a question.
+  FACILITY_QA is only a question about approved policies, hours, contacts, access rules, or
+  procedures and does not report a new problem. STATUS_QUERY asks about an existing reference.
   Return only the required structured output.
-

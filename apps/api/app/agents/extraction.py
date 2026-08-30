@@ -1,3 +1,4 @@
+from enum import StrEnum
 from typing import Any
 
 from pydantic import Field
@@ -5,10 +6,19 @@ from pydantic import Field
 from app.agents.base import BaseAgent, StrictAgentModel
 
 
+class HazardCode(StrEnum):
+    FIRE = "FIRE"
+    SMOKE = "SMOKE"
+    GAS_SMELL = "GAS_SMELL"
+    EXPOSED_LIVE_WIRE = "EXPOSED_LIVE_WIRE"
+    LIFT_ENTRAPMENT = "LIFT_ENTRAPMENT"
+    ACTIVE_FLOODING = "ACTIVE_FLOODING"
+
+
 class ExtractionOutput(StrictAgentModel):
     summary: str = Field(min_length=1, max_length=500)
     location: str = Field(min_length=1, max_length=200)
-    hazard_codes: list[str]
+    hazard_codes: list[HazardCode]
     missing_fields: list[str]
     reason_codes: list[str]
 

@@ -2,6 +2,8 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
+import httpx
+
 T = TypeVar("T")
 
 
@@ -12,7 +14,13 @@ async def with_transient_retries(  # noqa: UP047
     for attempt in range(retries + 1):
         try:
             return await operation()
-        except (TimeoutError, ConnectionError) as exc:
+        except (TimeoutError, ConnectionError, httpx.TransportError) as exc:
+            last_error = exc
+            if attempt < retries:
+                await asyncio.sleep(base_delay_seconds * (2**attempt))
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code not in {408, 409, 429} and exc.response.status_code < 500:
+                raise
             last_error = exc
             if attempt < retries:
                 await asyncio.sleep(base_delay_seconds * (2**attempt))

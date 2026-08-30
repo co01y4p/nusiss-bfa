@@ -22,7 +22,6 @@ def upgrade() -> None:
 
     if is_postgres:
         op.execute("CREATE EXTENSION IF NOT EXISTS vector;")
-        vector_type = sa.Column("embedding", sa.NullType(), nullable=False)
     else:
         vector_type = sa.Column(
             "embedding", sa.JSON().with_variant(JSONB, "postgresql"), nullable=False
@@ -49,9 +48,7 @@ def upgrade() -> None:
         unique=True,
     )
     op.create_index("ix_knowledge_documents_title", "knowledge_documents", ["title"])
-    op.create_index(
-        "ix_knowledge_documents_access_scope", "knowledge_documents", ["access_scope"]
-    )
+    op.create_index("ix_knowledge_documents_access_scope", "knowledge_documents", ["access_scope"])
     op.create_index("ix_knowledge_documents_is_approved", "knowledge_documents", ["is_approved"])
 
     if is_postgres:

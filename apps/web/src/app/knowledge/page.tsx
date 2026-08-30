@@ -5,36 +5,36 @@ import { useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
 
 type DocumentSummary = {
-  id: str;
-  title: str;
-  source_path: str;
-  version: str;
-  access_scope: str;
+  id: string;
+  title: string;
+  source_path: string;
+  version: string;
+  access_scope: string;
   is_approved: boolean;
   chunk_count: number;
-  created_at: str;
-  updated_at: str;
+  created_at: string;
+  updated_at: string;
 };
 
 type RetrievedChunk = {
-  chunk_id: str;
-  document_id: str;
-  document_title: str;
-  heading: str;
-  content: str;
-  version: str;
+  chunk_id: string;
+  document_id: string;
+  document_title: string;
+  heading: string;
+  content: string;
+  version: string;
   score: number;
 };
 
 type SearchResult = {
-  query: str;
+  query: string;
   results_count: number;
   chunks: RetrievedChunk[];
 };
 
 export default function KnowledgePage() {
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -66,7 +66,24 @@ export default function KnowledgePage() {
   }
 
   useEffect(() => {
-    loadDocuments();
+    let active = true;
+    apiRequest<DocumentSummary[]>("/knowledge/documents")
+      .then((data) => {
+        if (active) setDocuments(data);
+      })
+      .catch((err: unknown) => {
+        if (active) {
+          setError(
+            err instanceof Error ? err.message : "Failed to load documents",
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   async function toggleApproval(doc: DocumentSummary) {
@@ -79,17 +96,20 @@ export default function KnowledgePage() {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ is_approved: !doc.is_approved }),
-        }
+        },
       );
-      setDocuments((prev) =>
-        prev.map((d) => (d.id === doc.id ? updated : d))
-      );
+      setDocuments((prev) => prev.map((d) => (d.id === doc.id ? updated : d)));
       setSuccess(
-        `Document "${doc.title}" is now ${updated.is_approved ? "APPROVED (retrievable)" : "REVOKED (unapproved)"
-        }.`
+        `Document "${doc.title}" is now ${
+          updated.is_approved
+            ? "APPROVED (retrievable)"
+            : "REVOKED (unapproved)"
+        }.`,
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update approval");
+      setError(
+        err instanceof Error ? err.message : "Failed to update approval",
+      );
     }
   }
 
@@ -102,7 +122,9 @@ export default function KnowledgePage() {
       setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
       setSuccess(`Deleted document "${doc.title}".`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete document");
+      setError(
+        err instanceof Error ? err.message : "Failed to delete document",
+      );
     }
   }
 
@@ -113,18 +135,26 @@ export default function KnowledgePage() {
     setError("");
     setSuccess("");
     try {
-      const created = await apiRequest<DocumentSummary>("/knowledge/documents", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: newTitle.trim(),
-          content: newContent.trim(),
-          access_scope: newScope,
-          is_approved: newApproved,
-        }),
-      });
-      setDocuments((prev) => [created, ...prev.filter((d) => d.id !== created.id)]);
-      setSuccess(`Ingested "${created.title}" into ${created.chunk_count} chunks!`);
+      const created = await apiRequest<DocumentSummary>(
+        "/knowledge/documents",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: newTitle.trim(),
+            content: newContent.trim(),
+            access_scope: newScope,
+            is_approved: newApproved,
+          }),
+        },
+      );
+      setDocuments((prev) => [
+        created,
+        ...prev.filter((d) => d.id !== created.id),
+      ]);
+      setSuccess(
+        `Ingested "${created.title}" into ${created.chunk_count} chunks!`,
+      );
       setNewTitle("");
       setNewContent("");
     } catch (err) {
@@ -158,7 +188,7 @@ export default function KnowledgePage() {
     }
   }
 
-  function loadTemplate(title: str, text: str) {
+  function loadTemplate(title: string, text: string) {
     setNewTitle(title);
     setNewContent(text);
   }
@@ -168,26 +198,54 @@ export default function KnowledgePage() {
       <section className="card">
         <h1>RAG Knowledge Base & RAG Testing Studio</h1>
         <p className="lede">
-          Grounded retrieval engine powered by pgvector embeddings, heading-aware chunking, and strict citation validation.
+          Grounded retrieval engine powered by pgvector embeddings,
+          heading-aware chunking, and strict citation validation.
         </p>
 
         {error && <div className="notice error">{error}</div>}
-        {success && <div className="notice" style={{ background: "#e8f5e9", borderColor: "#a5d6a7", color: "#1b5e20" }}>{success}</div>}
+        {success && (
+          <div
+            className="notice"
+            style={{
+              background: "#e8f5e9",
+              borderColor: "#a5d6a7",
+              color: "#1b5e20",
+            }}
+          >
+            {success}
+          </div>
+        )}
       </section>
 
       {/* 1. Knowledge Base Documents List */}
       <section className="card">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: "1rem",
+          }}
+        >
           <h2>Ingested Documents ({documents.length})</h2>
-          <button type="button" onClick={loadDocuments} disabled={loading} style={{ width: "auto", padding: "0.4rem 0.8rem" }}>
+          <button
+            type="button"
+            onClick={loadDocuments}
+            disabled={loading}
+            style={{ width: "auto", padding: "0.4rem 0.8rem" }}
+          >
             {loading ? "Refreshing..." : "Refresh List"}
           </button>
         </div>
 
         {documents.length === 0 ? (
-          <p className="lede">No documents in the knowledge base yet. Ingest one below!</p>
+          <p className="lede">
+            No documents in the knowledge base yet. Ingest one below!
+          </p>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+          <div
+            style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}
+          >
             {documents.map((doc) => (
               <div
                 key={doc.id}
@@ -202,7 +260,14 @@ export default function KnowledgePage() {
                 }}
               >
                 <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.25rem" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      marginBottom: "0.25rem",
+                    }}
+                  >
                     <strong style={{ fontSize: "1.05rem" }}>{doc.title}</strong>
                     <span
                       className="pill"
@@ -219,8 +284,10 @@ export default function KnowledgePage() {
                     </span>
                   </div>
                   <div style={{ fontSize: "0.85rem", color: "#666" }}>
-                    <span>Chunks: <strong>{doc.chunk_count}</strong></span> |{" "}
-                    <span>Version: {doc.version}</span> |{" "}
+                    <span>
+                      Chunks: <strong>{doc.chunk_count}</strong>
+                    </span>{" "}
+                    | <span>Version: {doc.version}</span> |{" "}
                     <span>Source: {doc.source_path}</span>
                   </div>
                 </div>
@@ -263,10 +330,14 @@ export default function KnowledgePage() {
       <section className="card">
         <h2>Vector & Hybrid Search Sandbox</h2>
         <p className="lede">
-          Test raw pgvector cosine similarity + hybrid keyword matching before querying the full agent workflow.
+          Test raw pgvector cosine similarity + hybrid keyword matching before
+          querying the full agent workflow.
         </p>
 
-        <form onSubmit={handleSearch} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+        <form
+          onSubmit={handleSearch}
+          style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}
+        >
           <div>
             <label htmlFor="search-query">Query Text</label>
             <input
@@ -280,7 +351,14 @@ export default function KnowledgePage() {
           </div>
 
           <div style={{ display: "flex", gap: "1.5rem", alignItems: "center" }}>
-            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                cursor: "pointer",
+              }}
+            >
               <input
                 type="checkbox"
                 checked={searchMustApprove}
@@ -289,7 +367,9 @@ export default function KnowledgePage() {
               Must be approved (RAG Rule)
             </label>
 
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <div
+              style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
+            >
               <label htmlFor="top-k">Top-K Chunks:</label>
               <input
                 id="top-k"
@@ -302,7 +382,11 @@ export default function KnowledgePage() {
               />
             </div>
 
-            <button type="submit" disabled={searching} style={{ width: "auto", padding: "0.5rem 1.2rem" }}>
+            <button
+              type="submit"
+              disabled={searching}
+              style={{ width: "auto", padding: "0.5rem 1.2rem" }}
+            >
               {searching ? "Searching..." : "Test Vector Search"}
             </button>
           </div>
@@ -313,10 +397,18 @@ export default function KnowledgePage() {
             <h3>Search Results ({searchResult.results_count} chunks found)</h3>
             {searchResult.chunks.length === 0 ? (
               <div className="notice" style={{ marginTop: "0.5rem" }}>
-                No chunks matched the query (or matched chunks belong to unapproved documents).
+                No chunks matched the query (or matched chunks belong to
+                unapproved documents).
               </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginTop: "0.5rem" }}>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.75rem",
+                  marginTop: "0.5rem",
+                }}
+              >
                 {searchResult.chunks.map((chunk, idx) => (
                   <div
                     key={chunk.chunk_id}
@@ -327,18 +419,43 @@ export default function KnowledgePage() {
                       background: "#fafafa",
                     }}
                   >
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.4rem" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        marginBottom: "0.4rem",
+                      }}
+                    >
                       <strong>
                         #{idx + 1} {chunk.document_title} &gt; {chunk.heading}
                       </strong>
-                      <span className="pill" style={{ background: "#1565c0", color: "#fff", fontSize: "0.75rem" }}>
+                      <span
+                        className="pill"
+                        style={{
+                          background: "#1565c0",
+                          color: "#fff",
+                          fontSize: "0.75rem",
+                        }}
+                      >
                         Score: {chunk.score.toFixed(3)}
                       </span>
                     </div>
-                    <p style={{ margin: "0.25rem 0", fontSize: "0.9rem", whiteSpace: "pre-wrap" }}>
+                    <p
+                      style={{
+                        margin: "0.25rem 0",
+                        fontSize: "0.9rem",
+                        whiteSpace: "pre-wrap",
+                      }}
+                    >
                       {chunk.content}
                     </p>
-                    <div style={{ fontSize: "0.75rem", color: "#888", marginTop: "0.3rem" }}>
+                    <div
+                      style={{
+                        fontSize: "0.75rem",
+                        color: "#888",
+                        marginTop: "0.3rem",
+                      }}
+                    >
                       Chunk ID: <code>{chunk.chunk_id}</code>
                     </div>
                   </div>
@@ -353,11 +470,21 @@ export default function KnowledgePage() {
       <section className="card">
         <h2>Ingest New Document</h2>
         <p className="lede">
-          Add Markdown or text documents into the knowledge base to test chunking and grounding immediately.
+          Add Markdown or text documents into the knowledge base to test
+          chunking and grounding immediately.
         </p>
 
-        <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap" }}>
-          <span style={{ fontSize: "0.85rem", alignSelf: "center" }}>Preset Templates:</span>
+        <div
+          style={{
+            display: "flex",
+            gap: "0.5rem",
+            marginBottom: "1rem",
+            flexWrap: "wrap",
+          }}
+        >
+          <span style={{ fontSize: "0.85rem", alignSelf: "center" }}>
+            Preset Templates:
+          </span>
           <button
             type="button"
             className="small"
@@ -365,7 +492,7 @@ export default function KnowledgePage() {
             onClick={() =>
               loadTemplate(
                 "Parking and EV Charging Policy",
-                "# Parking and EV Charging Policy\n\n## Visitor Parking\nVisitor parking is available in Basement 2 from 07:00 to 22:00 at $2.50 per hour.\n\n## Electric Vehicle Charging\nTen 22kW AC EV charging bays are located on B2 Lots 10-20. Charging is restricted to a 4-hour maximum duration."
+                "# Parking and EV Charging Policy\n\n## Visitor Parking\nVisitor parking is available in Basement 2 from 07:00 to 22:00 at $2.50 per hour.\n\n## Electric Vehicle Charging\nTen 22kW AC EV charging bays are located on B2 Lots 10-20. Charging is restricted to a 4-hour maximum duration.",
               )
             }
           >
@@ -378,7 +505,7 @@ export default function KnowledgePage() {
             onClick={() =>
               loadTemplate(
                 "Waste Disposal and Recycling Guidelines",
-                "# Waste Disposal Guidelines\n\n## General Waste\nGeneral dry waste chutes are available on every floor lobby.\n\n## E-Waste Recycling\nE-waste collection bins for batteries and electronics are located at the Level 1 Loading Dock."
+                "# Waste Disposal Guidelines\n\n## General Waste\nGeneral dry waste chutes are available on every floor lobby.\n\n## E-Waste Recycling\nE-waste collection bins for batteries and electronics are located at the Level 1 Loading Dock.",
               )
             }
           >
@@ -386,7 +513,10 @@ export default function KnowledgePage() {
           </button>
         </div>
 
-        <form onSubmit={handleIngest} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+        <form
+          onSubmit={handleIngest}
+          style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}
+        >
           <div>
             <label htmlFor="doc-title">Document Title</label>
             <input
@@ -400,7 +530,9 @@ export default function KnowledgePage() {
           </div>
 
           <div>
-            <label htmlFor="doc-content">Content (Markdown with Headings)</label>
+            <label htmlFor="doc-content">
+              Content (Markdown with Headings)
+            </label>
             <textarea
               id="doc-content"
               rows={6}
@@ -426,7 +558,14 @@ export default function KnowledgePage() {
               </select>
             </div>
 
-            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                cursor: "pointer",
+              }}
+            >
               <input
                 type="checkbox"
                 checked={newApproved}
@@ -435,8 +574,14 @@ export default function KnowledgePage() {
               Mark Approved Immediately
             </label>
 
-            <button type="submit" disabled={ingesting} style={{ width: "auto", padding: "0.5rem 1.2rem" }}>
-              {ingesting ? "Chunking & Ingesting..." : "Ingest & Chunk Document"}
+            <button
+              type="submit"
+              disabled={ingesting}
+              style={{ width: "auto", padding: "0.5rem 1.2rem" }}
+            >
+              {ingesting
+                ? "Chunking & Ingesting..."
+                : "Ingest & Chunk Document"}
             </button>
           </div>
         </form>

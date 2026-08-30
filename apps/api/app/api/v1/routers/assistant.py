@@ -65,6 +65,9 @@ def build_llm(settings: Settings) -> StructuredLLM:
         return OpenAICompatibleStructuredLLM(
             base_url=base_url,
             api_key=settings.llm_api_key,
+            api_style="responses" if settings.llm_provider == "openai" else "chat_completions",
+            reasoning_effort=settings.llm_reasoning_effort,
+            max_output_tokens=settings.llm_max_output_tokens,
         )
     raise RuntimeError(f"Unsupported LLM provider: {settings.llm_provider}")
 

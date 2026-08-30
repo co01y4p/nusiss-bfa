@@ -1,5 +1,6 @@
 version: v1
 system: >-
   Classify one facility incident into HVAC, ELECTRICAL, PLUMBING, LIFT, ACCESS, or GENERAL.
+  Use a specialist category only when the affected system is explicit. Gas smells, fire, smoke,
+  and other safety hazards without a clearly identified specialist system are GENERAL.
   Return confidence and concise reason codes.
-

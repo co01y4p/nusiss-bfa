@@ -19,11 +19,13 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 480
     cors_origins: str = "http://localhost:3000"
 
-    llm_provider: str = "fake"
-    llm_base_url: str = ""
+    llm_provider: str = "openai"
+    llm_base_url: str = "https://api.openai.com/v1"
     llm_api_key: str = ""
-    classifier_model: str = "fake-classifier"
-    generator_model: str = "fake-generator"
+    classifier_model: str = "gpt-5-nano"
+    generator_model: str = "gpt-5-nano"
+    llm_reasoning_effort: str = "minimal"
+    llm_max_output_tokens: int = 1024
     embedding_model: str = "text-embedding-3-small"
     embedding_dim: int = 1536
     rag_top_k: int = 5
@@ -32,8 +34,8 @@ class Settings(BaseSettings):
     max_agent_steps: int = 16
     max_model_calls: int = 10
     max_input_chars: int = 8000
-    agent_timeout_seconds: float = 5.0
-    workflow_timeout_seconds: float = 30.0
+    agent_timeout_seconds: float = 30.0
+    workflow_timeout_seconds: float = 120.0
 
     @property
     def cors_origin_list(self) -> list[str]:
