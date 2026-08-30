@@ -4,10 +4,14 @@
 // is restricted to the MANAGER_EMAILS allow-list — any other Google account is
 // rejected at /api/v1/auth/google, before a session is ever minted.
 //
+// Local dev: set DISABLE_LOGIN=true in .dev.vars to skip Google sign-in
+// entirely and act as a manager. Off by default (login enforced).
+//
 //   GET   /api/v1/auth/config                      (public)  {google_client_id}
 //   POST  /api/v1/auth/google                      (public)  verify Google ID token, mint session
 //   GET   /api/v1/auth/me                           (session) {email, role}
 //   POST  /api/v1/auth/logout                       (public)  clear session
+//   POST  /api/v1/chat                              (session) chat with Gemini 3.5 Flash Lite
 //   POST  /api/v1/incidents                        (session)  create incident
 //   GET   /api/v1/incidents/track/:reference_code  (session)  status lookup
 //   GET   /api/v1/incidents                        (manager)  list
@@ -109,9 +113,19 @@ function isManager(session) {
   return session?.role === "MANAGER";
 }
 
+// Local-dev escape hatch: set DISABLE_LOGIN=true in .dev.vars to skip the
+// Google sign-in gate entirely and act as a manager. Defaults to unset
+// (login enforced) so it must be opted into — never set this in production.
+const DEV_SESSION = { email: "angyupin159753@gmail.com", role: "MANAGER" };
+
+function authDisabled(env) {
+  return (env.DISABLE_LOGIN ?? "").toString().trim().toLowerCase() === "true";
+}
+
 async function handleAuthConfig(env) {
+  if (authDisabled(env)) return json({ disable_login: true });
   if (!env.GOOGLE_CLIENT_ID) return json({ error: "Google sign-in not configured" }, 500);
-  return json({ google_client_id: env.GOOGLE_CLIENT_ID });
+  return json({ google_client_id: env.GOOGLE_CLIENT_ID, disable_login: false });
 }
 
 async function handleAuthGoogle(request, env) {
@@ -154,14 +168,122 @@ async function handleAuthGoogle(request, env) {
   );
 }
 
-async function handleAuthMe(request, env) {
-  const session = await verifySession(request, env);
+async function handleAuthMe(session) {
   if (!session) return json({ error: "Unauthorized" }, 401);
   return json({ email: session.email, role: session.role });
 }
 
 async function handleAuthLogout() {
   return json({ ok: true }, 200, { "set-cookie": sessionCookieHeader("", 0) });
+}
+
+async function handleChat(request, env) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Invalid JSON body" }, 400);
+  }
+
+  const message = (body.message ?? "").toString().trim();
+  if (!message) {
+    return json({ error: "message is required" }, 422);
+  }
+  if (message.length > 2000) {
+    return json({ error: "message too long (max 2000 chars)" }, 422);
+  }
+
+  const apiKey = env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return json(
+      {
+        error: "Gemini API is not configured. Please set GEMINI_API_KEY in .dev.vars (locally) or Cloudflare secrets.",
+      },
+      503
+    );
+  }
+
+  const model = env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+
+  // Build conversation history if provided
+  const contents = [];
+  if (Array.isArray(body.history)) {
+    for (const item of body.history.slice(-10)) {
+      if (
+        item &&
+        (item.role === "user" || item.role === "model") &&
+        typeof item.content === "string" &&
+        item.content.trim()
+      ) {
+        contents.push({
+          role: item.role,
+          parts: [{ text: item.content.slice(0, 2000) }],
+        });
+      }
+    }
+  }
+
+  // Add the current user message
+  contents.push({
+    role: "user",
+    parts: [{ text: message }],
+  });
+
+  const systemInstruction = {
+    parts: [
+      {
+        text: `You are the Facilities AI Assistant for the NUS-ISS Building Facilities Management system (nusiss-bfa).
+Your goal is to answer simple facilities and building-related questions for building occupants and guide them on reporting issues or tracking requests.
+
+Key guidelines:
+1. Tone: Friendly, professional, clear, concise, and helpful.
+2. Building Facilities Scope:
+   - Reporting issues: Users can report facility defects (e.g., air conditioning leaks, broken lighting, plumbing issues, elevator faults, restroom supplies) via the "Report an issue" form. Once submitted, they receive an opaque reference code (e.g. BFA-XXXXXXXX).
+   - Tracking: Users can check incident status (RECEIVED, IN_PROGRESS, RESOLVED, CLOSED) using their reference code on the "Track a report" page.
+   - Operating Hours: General building access is 07:00 - 22:00 Monday to Saturday. Facilities management office is available 08:30 - 18:00 on weekdays.
+   - Amenities: Meeting rooms, study areas, pantries with hot/cold water, restrooms on all levels, lift lobbies at core A and B.
+3. Critical Emergencies:
+   - If an occupant reports a dangerous emergency (e.g. fire, active smoke, gas leak smell, exposed live electric wires, elevator entrapment, severe structural flood), advise them immediately to evacuate if necessary and contact campus emergency services / security hotline (995 / Campus Security: 6874-1616) before filing a ticket.
+4. Keep answers focused on facility assistance. If asked general knowledge questions outside facility operations, give a polite, brief answer and remind them of your facilities assistant role.`,
+      },
+    ],
+  };
+
+  const payload = {
+    system_instruction: systemInstruction,
+    contents,
+    generationConfig: {
+      temperature: 0.7,
+      maxOutputTokens: 1000,
+    },
+  };
+
+  try {
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+      model
+    )}:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+    const res = await fetch(geminiUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(25000),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      const errMsg = data.error?.message || `Gemini API error (status ${res.status})`;
+      return json({ error: errMsg }, 502);
+    }
+
+    const reply =
+      data.candidates?.[0]?.content?.parts?.[0]?.text ||
+      "I'm sorry, I couldn't generate a response at this moment. Please try again.";
+
+    return json({ reply, model });
+  } catch (err) {
+    return json({ error: "Failed to communicate with Gemini API", detail: `${err}` }, 500);
+  }
 }
 
 export default {
@@ -177,14 +299,20 @@ export default {
       if (path === "/api/v1/auth/logout" && method === "POST") return handleAuthLogout();
 
       // --- Site-wide session gate ---
-      const session = PRE_AUTH_PATHS.has(path) ? null : await verifySession(request, env);
-      if (!PRE_AUTH_PATHS.has(path) && !session) {
+      const bypassAuth = authDisabled(env);
+      const session = bypassAuth
+        ? DEV_SESSION
+        : PRE_AUTH_PATHS.has(path)
+        ? null
+        : await verifySession(request, env);
+      if (!bypassAuth && !PRE_AUTH_PATHS.has(path) && !session) {
         if (path.startsWith("/api/")) return json({ error: "Unauthorized" }, 401);
         const next = encodeURIComponent(path + url.search);
         return Response.redirect(`${url.origin}/login?next=${next}`, 302);
       }
 
-      if (path === "/api/v1/auth/me" && method === "GET") return handleAuthMe(request, env);
+      if (path === "/api/v1/auth/me" && method === "GET") return handleAuthMe(session);
+      if (path === "/api/v1/chat" && method === "POST") return handleChat(request, env);
 
       // --- Incident routes (any signed-in session) ---
       if (path === "/api/v1/incidents" && method === "POST") {

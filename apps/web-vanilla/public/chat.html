@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Copilot — Facilities AI Assistant</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="site">
+    <a class="brand-wrapper" href="/">
+      <div class="brand-icon">🏢</div>
+      <span class="brand-text">Facilities AI</span>
+      <span class="brand-badge">Hub</span>
+    </a>
+    <nav>
+      <a href="/"><span>📝</span> Report Issue</a>
+      <a href="/track.html"><span>🔍</span> Track Report</a>
+      <a href="/chat.html" class="active"><span>✨</span> AI Assistant</a>
+      <a href="/manager.html"><span>📊</span> Manager</a>
+    </nav>
+    <div class="session-bar" id="session-bar"></div>
+  </header>
+
+  <main style="max-width: 900px;">
+    <div class="card chat-card">
+      <div class="chat-header">
+        <div>
+          <h1>Facilities AI Copilot</h1>
+          <p class="lede">Grounded building assistant for operating hours, amenities, fault diagnosis, and reporting assistance.</p>
+        </div>
+        <div class="badge-gemini" id="model-badge">
+          <span>✨</span>
+          <span>Gemini 3.5 Flash Lite</span>
+        </div>
+      </div>
+
+      <!-- Quick Suggestion Prompts -->
+      <div class="suggestion-chips" id="suggestion-chips">
+        <button type="button" class="chip" data-query="What are the building and study hub operating hours?">🕒 Operating hours</button>
+        <button type="button" class="chip" data-query="How do I report a facilities issue step-by-step?">📝 How to report an issue</button>
+        <button type="button" class="chip" data-query="What amenities and meeting facilities are available in this building?">🏢 Available amenities</button>
+        <button type="button" class="chip" data-query="What should I do immediately in case of a severe water leak or hazard?">🚨 Emergency & hazard protocol</button>
+      </div>
+
+      <!-- Chat Messages Container -->
+      <div class="chat-box" id="chat-box">
+        <div class="chat-message assistant">
+          <div class="chat-avatar">🤖</div>
+          <div class="chat-bubble-wrap">
+            <div class="bubble-header">Facilities Copilot</div>
+            <div class="bubble-content">Hello! I am your Facilities AI Assistant. How can I assist you today? You can ask me questions about building hours, facility guidelines, amenities, or help diagnosing an issue.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Typing Indicator -->
+      <div id="typing-indicator" class="typing-indicator" style="display: none;">
+        <span class="dot"></span>
+        <span class="dot"></span>
+        <span class="dot"></span>
+        <span style="margin-left: 0.25rem;">Gemini Copilot is generating response...</span>
+      </div>
+
+      <!-- Input Form Area -->
+      <form id="chat-form" class="chat-form">
+        <div class="chat-input-wrapper">
+          <textarea
+            id="chat-input"
+            rows="1"
+            maxlength="2000"
+            placeholder="Ask a facilities question or describe an issue (Press Enter to send)..."
+            required
+          ></textarea>
+        </div>
+        <div class="chat-actions">
+          <button type="button" class="small secondary" id="clear-btn">🗑️ Clear Conversation</button>
+          <button type="submit" id="send-btn">
+            <span>Send Message</span>
+            <span>➔</span>
+          </button>
+        </div>
+      </form>
+      <div id="chat-error" class="notice"></div>
+    </div>
+  </main>
+
+  <footer class="site">
+    NUS-ISS Facilities AI Assistant &bull; Conversational AI Intelligence Layer
+  </footer>
+
+  <script>
+    // Session State
+    (async () => {
+      const bar = document.getElementById("session-bar");
+      try {
+        const res = await fetch("/api/v1/auth/me");
+        if (!res.ok) return;
+        const { email } = await res.json();
+        bar.innerHTML = `
+          <div class="user-pill">
+            <span class="user-status-dot"></span>
+            <span>${email}</span>
+          </div>
+          <button type="button" class="small secondary" id="signout-btn">Sign out</button>
+        `;
+        document.getElementById("signout-btn").addEventListener("click", async () => {
+          await fetch("/api/v1/auth/logout", { method: "POST" });
+          location.href = "/login.html";
+        });
+      } catch (e) {}
+    })();
+
+    const chatBox = document.getElementById("chat-box");
+    const chatForm = document.getElementById("chat-form");
+    const chatInput = document.getElementById("chat-input");
+    const sendBtn = document.getElementById("send-btn");
+    const clearBtn = document.getElementById("clear-btn");
+    const typingIndicator = document.getElementById("typing-indicator");
+    const chatError = document.getElementById("chat-error");
+    const chips = document.getElementById("suggestion-chips");
+
+    const conversationHistory = [];
+
+    function appendMessage(role, text) {
+      const msgDiv = document.createElement("div");
+      msgDiv.className = `chat-message ${role}`;
+
+      const avatarDiv = document.createElement("div");
+      avatarDiv.className = "chat-avatar";
+      avatarDiv.textContent = role === "user" ? "👤" : "🤖";
+
+      const bubbleWrap = document.createElement("div");
+      bubbleWrap.className = "chat-bubble-wrap";
+
+      const headerDiv = document.createElement("div");
+      headerDiv.className = "bubble-header";
+      headerDiv.textContent = role === "user" ? "You" : "Facilities Copilot";
+
+      const contentDiv = document.createElement("div");
+      contentDiv.className = "bubble-content";
+      contentDiv.textContent = text;
+
+      bubbleWrap.appendChild(headerDiv);
+      bubbleWrap.appendChild(contentDiv);
+
+      msgDiv.appendChild(avatarDiv);
+      msgDiv.appendChild(bubbleWrap);
+
+      chatBox.appendChild(msgDiv);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function showTyping(show) {
+      typingIndicator.style.display = show ? "flex" : "none";
+      if (show) chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function showError(msg) {
+      if (!msg) {
+        chatError.style.display = "none";
+        chatError.textContent = "";
+        return;
+      }
+      chatError.className = "notice err";
+      chatError.style.display = "block";
+      chatError.textContent = msg;
+    }
+
+    async function sendMessage(text) {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+
+      showError(null);
+      appendMessage("user", trimmed);
+      chatInput.value = "";
+      chatInput.style.height = "auto";
+      chatInput.disabled = true;
+      sendBtn.disabled = true;
+      showTyping(true);
+
+      try {
+        const payload = {
+          message: trimmed,
+          history: conversationHistory,
+        };
+
+        const res = await fetch("/api/v1/chat", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || `Error ${res.status}: Failed to get response`);
+        }
+
+        appendMessage("assistant", data.reply);
+        conversationHistory.push({ role: "user", content: trimmed });
+        conversationHistory.push({ role: "model", content: data.reply });
+
+        if (data.model) {
+          const badge = document.getElementById("model-badge");
+          if (badge) badge.innerHTML = `<span>✨</span><span>${data.model}</span>`;
+        }
+      } catch (err) {
+        showError(err.message || "Failed to communicate with AI Assistant");
+      } finally {
+        showTyping(false);
+        chatInput.disabled = false;
+        sendBtn.disabled = false;
+        chatInput.focus();
+      }
+    }
+
+    chatForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      sendMessage(chatInput.value);
+    });
+
+    chatInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        chatForm.dispatchEvent(new Event("submit"));
+      }
+    });
+
+    chatInput.addEventListener("input", () => {
+      chatInput.style.height = "auto";
+      chatInput.style.height = Math.min(chatInput.scrollHeight, 160) + "px";
+    });
+
+    clearBtn.addEventListener("click", () => {
+      conversationHistory.length = 0;
+      chatBox.innerHTML = `
+        <div class="chat-message assistant">
+          <div class="chat-avatar">🤖</div>
+          <div class="chat-bubble-wrap">
+            <div class="bubble-header">Facilities Copilot</div>
+            <div class="bubble-content">Chat history cleared. How can I help you today?</div>
+          </div>
+        </div>
+      `;
+      showError(null);
+    });
+
+    chips.addEventListener("click", (e) => {
+      const chip = e.target.closest(".chip");
+      if (chip && chip.dataset.query) {
+        sendMessage(chip.dataset.query);
+      }
+    });
+  </script>
+</body>
+</html>

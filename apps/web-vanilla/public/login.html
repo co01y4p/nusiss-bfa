@@ -3,27 +3,44 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Sign in — Facilities AI Assistant</title>
+  <title>Sign In — Facilities AI Assistant</title>
   <link rel="stylesheet" href="/styles.css" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
-<body>
+<body style="background: radial-gradient(circle at 50% 20%, #eff6ff 0%, #f8fafc 80%);">
   <header class="site">
-    <a class="brand" href="/">Facilities AI Assistant</a>
+    <a class="brand-wrapper" href="/">
+      <div class="brand-icon">🏢</div>
+      <span class="brand-text">Facilities AI</span>
+      <span class="brand-badge">Portal</span>
+    </a>
   </header>
 
   <main>
-    <div class="card">
-      <h1>Sign in</h1>
-      <p class="lede">Sign in with Google to report an issue, track a report, or access the manager queue.</p>
+    <div class="login-container card" style="margin-top: 3rem;">
+      <div class="login-brand-icon">🏢</div>
+      <h1>Facilities AI Assistant</h1>
+      <p class="lede" style="font-size: 0.92rem; margin-top: 0.25rem;">
+        Intelligent Building Operations & Incident Management Portal
+      </p>
 
-      <div id="g_id_signin"></div>
+      <ul class="features-list">
+        <li><span>✨</span> <strong>AI Copilot:</strong> Instant guidance & triage powered by Gemini</li>
+        <li><span>⚡</span> <strong>Smart Dispatch:</strong> Fast tracking & status updates</li>
+        <li><span>📊</span> <strong>Manager Console:</strong> Live facility operations queue</li>
+      </ul>
+
+      <div style="margin: 1.75rem 0 1rem; display: flex; justify-content: center;">
+        <div id="g_id_signin"></div>
+      </div>
 
       <div id="error" class="notice"></div>
     </div>
   </main>
 
-  <footer class="site">NUS-ISS capstone demo harness — vanilla M1 slice on Cloudflare Workers + D1.</footer>
+  <footer class="site">
+    NUS-ISS Facilities AI Assistant &bull; Secure Enterprise Single Sign-On
+  </footer>
 
   <script>
     const error = document.getElementById("error");
@@ -34,13 +51,14 @@
       if (!gsiReady || !googleClientId) return;
       google.accounts.id.initialize({ client_id: googleClientId, callback: onCredential });
       google.accounts.id.renderButton(document.getElementById("g_id_signin"), {
-        theme: "outline",
+        theme: "filled_blue",
         size: "large",
-        width: 300,
+        shape: "rectangular",
+        width: 320,
+        text: "signin_with",
       });
     }
 
-    // Called automatically by the GSI client library once it has loaded.
     window.onGoogleLibraryLoad = () => {
       gsiReady = true;
       tryInit();
@@ -48,6 +66,7 @@
 
     async function onCredential(response) {
       error.className = "notice";
+      error.style.display = "none";
       try {
         const res = await fetch("/api/v1/auth/google", {
           method: "POST",
@@ -65,6 +84,7 @@
         location.href = next;
       } catch (err) {
         error.className = "notice err";
+        error.style.display = "block";
         error.textContent = err.message;
       }
     }
@@ -72,12 +92,18 @@
     fetch("/api/v1/auth/config")
       .then((res) => res.json())
       .then((data) => {
-        if (!data.google_client_id) throw new Error("Google sign-in not configured");
+        if (data.disable_login) {
+          const next = new URLSearchParams(location.search).get("next") || "/";
+          location.href = next;
+          return;
+        }
+        if (!data.google_client_id) throw new Error("Google sign-in client ID is not configured");
         googleClientId = data.google_client_id;
         tryInit();
       })
       .catch((err) => {
         error.className = "notice err";
+        error.style.display = "block";
         error.textContent = err.message;
       });
   </script>
