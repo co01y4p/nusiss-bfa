@@ -146,8 +146,8 @@ async function handleAuthGoogle(request, env) {
       issuer: ["https://accounts.google.com", "accounts.google.com"],
       audience: env.GOOGLE_CLIENT_ID,
     }));
-  } catch (err) {
-    return json({ error: "Invalid Google credential", detail: `${err}` }, 401);
+  } catch {
+    return json({ error: "Invalid Google credential" }, 401);
   }
 
   if (!payload.email || payload.email_verified !== true) {
@@ -392,7 +392,8 @@ export default {
       // Non-API paths fall through to static assets.
       return env.ASSETS.fetch(request);
     } catch (err) {
-      return json({ error: "Internal error", detail: `${err}` }, 500);
+      console.error("Unhandled Worker error", err);
+      return json({ error: "Internal error" }, 500);
     }
   },
 };

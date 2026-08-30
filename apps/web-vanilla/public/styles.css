@@ -426,64 +426,9 @@ button.secondary, .btn-secondary {
   border: 1px solid var(--border-light);
 }
 
-button.secondary:hover, .btn-secondary:hover {
-  background: #e2e8f0;
-  color: var(--text-main);
-  box-shadow: var(--shadow-xs);
-}
-
-button.small, .btn-small {
-  padding: 0.32rem 0.75rem;
-  font-size: 0.82rem;
-}
-
-button.outline, .btn-outline {
-  background: transparent;
-  color: var(--primary);
-  border: 1px solid var(--primary-border);
-}
-
-button.outline:hover, .btn-outline:hover {
-  background: var(--primary-subtle);
-}
-
-/* ==========================================================================
-   Notices, Alerts, & Badges
-   ========================================================================== */
-.notice {
-  border-radius: var(--radius-md);
-  padding: 1rem 1.25rem;
-  margin-top: 1.25rem;
-  display: none;
-  animation: fadeIn 0.2s ease;
-}
-
-.notice.ok {
-  display: block;
-  background: #ecfdf5;
-  color: #065f46;
-  border: 1px solid #a7f3d0;
-}
-
-.notice.err {
-  display: block;
-  background: #fef2f2;
-  color: #991b1b;
-  border: 1px solid #fecaca;
-}
-
-.ref-box {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: #ffffff;
-  border: 1px solid #a7f3d0;
-  padding: 0.75rem 1rem;
-  border-radius: var(--radius-sm);
-  margin-top: 0.75rem;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
+.notice { border-radius: 6px; padding: 0.9rem 1rem; margin-top: 1.2rem; display: none; white-space: pre-line; }
+.notice.ok { display: block; background: #e6f4ea; color: var(--ok); border: 1px solid #b7dfc2; }
+.notice.err { display: block; background: #fdecea; color: #b3261e; border: 1px solid #f5c6c2; }
 
 code.ref {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;

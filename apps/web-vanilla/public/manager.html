@@ -274,22 +274,21 @@
     // Session init
     (async () => {
       const bar = document.getElementById("session-bar");
-      try {
-        const res = await fetch("/api/v1/auth/me");
-        if (!res.ok) return;
-        const { email } = await res.json();
-        bar.innerHTML = `
-          <div class="user-pill">
-            <span class="user-status-dot"></span>
-            <span>${email}</span>
-          </div>
-          <button type="button" class="small secondary" id="signout-btn">Sign out</button>
-        `;
-        document.getElementById("signout-btn").addEventListener("click", async () => {
-          await fetch("/api/v1/auth/logout", { method: "POST" });
-          location.href = "/login.html";
-        });
-      } catch (e) {}
+      const res = await fetch("/api/v1/auth/me");
+      if (!res.ok) return; // gate already redirected page nav on 401
+      const { email } = await res.json();
+      const identity = document.createElement("span");
+      identity.textContent = email;
+      bar.replaceChildren(identity);
+      const signOut = document.createElement("button");
+      signOut.type = "button";
+      signOut.className = "small";
+      signOut.textContent = "Sign out";
+      signOut.addEventListener("click", async () => {
+        await fetch("/api/v1/auth/logout", { method: "POST" });
+        location.href = "/login.html";
+      });
+      bar.appendChild(signOut);
 
       loadIncidents().catch((err) => {
         listError.className = "notice err";

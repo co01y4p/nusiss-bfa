@@ -103,22 +103,21 @@
     // Session init
     (async () => {
       const bar = document.getElementById("session-bar");
-      try {
-        const res = await fetch("/api/v1/auth/me");
-        if (!res.ok) return;
-        const { email } = await res.json();
-        bar.innerHTML = `
-          <div class="user-pill">
-            <span class="user-status-dot"></span>
-            <span>${email}</span>
-          </div>
-          <button type="button" class="small secondary" id="signout-btn">Sign out</button>
-        `;
-        document.getElementById("signout-btn").addEventListener("click", async () => {
-          await fetch("/api/v1/auth/logout", { method: "POST" });
-          location.href = "/login.html";
-        });
-      } catch (e) {}
+      const res = await fetch("/api/v1/auth/me");
+      if (!res.ok) return;
+      const { email } = await res.json();
+      const identity = document.createElement("span");
+      identity.textContent = email;
+      bar.replaceChildren(identity);
+      const signOut = document.createElement("button");
+      signOut.type = "button";
+      signOut.className = "small";
+      signOut.textContent = "Sign out";
+      signOut.addEventListener("click", async () => {
+        await fetch("/api/v1/auth/logout", { method: "POST" });
+        location.href = "/login.html";
+      });
+      bar.appendChild(signOut);
     })();
 
     const form = document.getElementById("track-form");
@@ -179,17 +178,13 @@
         if (res.status === 404) throw new Error("No report found matching that reference code. Please verify the code.");
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Lookup failed");
-
-        document.getElementById("res-ref").textContent = data.reference_code;
-        document.getElementById("res-location").textContent = data.location;
-        document.getElementById("res-created").textContent = new Date(data.created_at).toLocaleString();
-        document.getElementById("res-updated").textContent = new Date(data.updated_at).toLocaleString();
-
-        const badge = document.getElementById("res-status-badge");
-        badge.innerHTML = `<span class="filter-pill active" style="font-size: 0.78rem; text-transform: uppercase;">${data.status.replace("_", " ")}</span>`;
-
-        updateStepper(data.status);
-        resWrapper.style.display = "block";
+        result.className = "notice ok";
+        result.textContent = [
+          `${data.reference_code} — ${data.status.replace("_", " ")}`,
+          `Location: ${data.location}`,
+          `Submitted: ${new Date(data.created_at).toLocaleString()}`,
+          `Last updated: ${new Date(data.updated_at).toLocaleString()}`,
+        ].join("\n");
       } catch (err) {
         resError.textContent = err.message;
         resError.style.display = "block";

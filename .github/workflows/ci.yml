@@ -1,0 +1,57 @@
+name: Application CI
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "apps/api/**"
+      - "apps/web/**"
+      - "infra/**"
+      - ".github/workflows/ci.yml"
+  pull_request:
+    branches: [master]
+    paths:
+      - "apps/api/**"
+      - "apps/web/**"
+      - "infra/**"
+      - ".github/workflows/ci.yml"
+  workflow_dispatch: {}
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: ruff format --check .
+      - run: ruff check .
+      - run: mypy app
+      - run: pytest
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm build

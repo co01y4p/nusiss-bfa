@@ -74,8 +74,13 @@
           body: JSON.stringify({ credential: response.credential }),
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Sign-in authorization failed");
-        const next = new URLSearchParams(location.search).get("next") || "/";
+        if (!res.ok) throw new Error(data.error || "Sign-in failed");
+        const requestedNext = new URLSearchParams(location.search).get("next") || "/";
+        const next = requestedNext.startsWith("/") &&
+          !requestedNext.startsWith("//") &&
+          !requestedNext.includes("\\")
+          ? requestedNext
+          : "/";
         location.href = next;
       } catch (err) {
         error.className = "notice err";
