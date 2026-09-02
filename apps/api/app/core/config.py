@@ -37,6 +37,13 @@ class Settings(BaseSettings):
     agent_timeout_seconds: float = 30.0
     workflow_timeout_seconds: float = 120.0
 
+    rate_limit_enabled: bool = True
+    rate_limit_requests_per_minute: int = 60
+    rate_limit_window_seconds: int = 60
+    circuit_breaker_failure_threshold: int = 3
+    circuit_breaker_recovery_seconds: float = 30.0
+    redact_pii_in_llm_prompts: bool = True
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [item.strip() for item in self.cors_origins.split(",") if item.strip()]

@@ -27,6 +27,7 @@ from app.repositories.postgres.incidents import (
     SqlAlchemyWorkflowRunRepository,
 )
 from app.repositories.postgres.knowledge import SqlAlchemyKnowledgeRepository
+from app.repositories.postgres.security_events import PostgresSecurityEventRepository
 from app.security.authentication import CurrentUser, require_manager
 from app.workflows.facility_graph import FacilityWorkflow
 
@@ -139,6 +140,7 @@ def build_workflow(db: Session, settings: Settings) -> FacilityWorkflow:
         ),
         retriever=retriever,
         citation_validator=citation_validator,
+        security_events=PostgresSecurityEventRepository(db),
     )
 
 

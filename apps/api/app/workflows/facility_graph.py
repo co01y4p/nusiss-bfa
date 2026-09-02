@@ -16,6 +16,9 @@ from app.domain.incidents.models import IncidentCreate
 from app.rag.citation_validator import CitationValidator
 from app.rag.retriever import KnowledgeRetriever
 from app.repositories.interfaces.incidents import IncidentRepository, WorkflowRunRepository
+from app.repositories.interfaces.security import SecurityEventRepository
+from app.security.output_policy import OutputPolicyValidator
+from app.security.prompt_injection import PromptInjectionDetector
 from app.services.incident_service import IncidentService
 from app.workflows.state import WorkflowState
 
@@ -45,6 +48,8 @@ class FacilityWorkflow:
         review: ReviewAgent,
         retriever: KnowledgeRetriever | None = None,
         citation_validator: CitationValidator | None = None,
+        security_events: SecurityEventRepository | None = None,
+        output_validator: OutputPolicyValidator | None = None,
     ) -> None:
         self.settings = settings
         self.incidents = incident_repository
@@ -59,6 +64,9 @@ class FacilityWorkflow:
         self.review = review
         self.retriever = retriever
         self.citation_validator = citation_validator or CitationValidator()
+        self.security_events = security_events
+        self.output_validator = output_validator or OutputPolicyValidator()
+        self.injection_detector = PromptInjectionDetector()
 
     def _check_bounds(self, state: WorkflowState, *, model_call: bool = False) -> None:
         if state.step_count >= self.settings.max_agent_steps:
@@ -82,6 +90,26 @@ class FacilityWorkflow:
         data = output.model_dump(mode="json")
         reasons = data.get("reason_codes", [])
         self._record(state, node, data, reasons if isinstance(reasons, list) else [])
+
+    def _log_security_event(
+        self,
+        event_type: str,
+        severity: str,
+        input_text: str | None,
+        details: dict[str, Any],
+        reason_codes: list[str],
+    ) -> None:
+        if self.security_events:
+            try:
+                self.security_events.record(
+                    event_type=event_type,
+                    severity=severity,
+                    input_text=input_text,
+                    details=details,
+                    reason_codes=reason_codes,
+                )
+            except Exception:
+                pass
 
     async def run(self, *, text: str, location: str | None = None) -> WorkflowState:
         normalized = text.strip()
@@ -118,8 +146,15 @@ class FacilityWorkflow:
             self._record(
                 state,
                 "quarantine",
-                {"risk_labels": security.risk_labels},
+                {"risk_labels": security.risk_labels, "risk_score": security.risk_score},
                 ["HIGH_RISK_INPUT"],
+            )
+            self._log_security_event(
+                event_type="DIRECT_PROMPT_INJECTION",
+                severity="HIGH",
+                input_text=state.input_text,
+                details={"risk_score": security.risk_score, "risk_labels": security.risk_labels},
+                reason_codes=security.reason_codes,
             )
             return
 
@@ -197,13 +232,30 @@ class FacilityWorkflow:
             requires_human_review=priority.requires_human_review or bool(extraction.missing_fields),
         )
 
-        retrieved_chunks = []
+        safe_chunks = []
         if self.retriever:
             retrieved_chunks = await self.retriever.search(
                 state.input_text, top_k=3, access_scope="PUBLIC", must_be_approved=True
             )
+            # Scan retrieved chunks for indirect prompt injection
+            for chunk in retrieved_chunks:
+                chunk_score = self.injection_detector.score_chunk(chunk.content)
+                if chunk_score.is_high_risk:
+                    self._log_security_event(
+                        event_type="INDIRECT_RAG_INJECTION",
+                        severity="HIGH",
+                        input_text=state.input_text,
+                        details={
+                            "chunk_id": chunk.chunk_id,
+                            "heading": chunk.heading,
+                            "risk_labels": chunk_score.risk_labels,
+                        },
+                        reason_codes=chunk_score.reason_codes,
+                    )
+                else:
+                    safe_chunks.append(chunk)
 
-        chunks_data = [c.model_dump(mode="json") for c in retrieved_chunks]
+        chunks_data = [c.model_dump(mode="json") for c in safe_chunks]
         self._record(
             state,
             "incident_retrieval",
@@ -220,11 +272,11 @@ class FacilityWorkflow:
         response = await self.response.run(response_payload)
         self._record_model_output(state, "incident_response", response)
         await self._review_and_finalize(
-            state, response.message, response.citations, retrieved_chunks=retrieved_chunks
+            state, response.message, response.citations, retrieved_chunks=safe_chunks
         )
 
     async def _faq_path(self, state: WorkflowState, payload: dict[str, Any]) -> None:
-        retrieved_chunks = []
+        safe_chunks = []
         if self.retriever:
             retrieved_chunks = await self.retriever.search(
                 state.input_text,
@@ -232,8 +284,25 @@ class FacilityWorkflow:
                 access_scope="PUBLIC",
                 must_be_approved=True,
             )
+            # Scan retrieved chunks for indirect prompt injection
+            for chunk in retrieved_chunks:
+                chunk_score = self.injection_detector.score_chunk(chunk.content)
+                if chunk_score.is_high_risk:
+                    self._log_security_event(
+                        event_type="INDIRECT_RAG_INJECTION",
+                        severity="HIGH",
+                        input_text=state.input_text,
+                        details={
+                            "chunk_id": chunk.chunk_id,
+                            "heading": chunk.heading,
+                            "risk_labels": chunk_score.risk_labels,
+                        },
+                        reason_codes=chunk_score.reason_codes,
+                    )
+                else:
+                    safe_chunks.append(chunk)
 
-        chunks_data = [c.model_dump(mode="json") for c in retrieved_chunks]
+        chunks_data = [c.model_dump(mode="json") for c in safe_chunks]
         self._record(
             state,
             "faq_retrieval",
@@ -241,8 +310,7 @@ class FacilityWorkflow:
             ["APPROVED_CONTEXT_RETRIEVED"] if chunks_data else ["NO_APPROVED_CONTEXT"],
         )
 
-        if not retrieved_chunks:
-            # Fallback when no approved knowledge exists for the query
+        if not safe_chunks:
             state.outcome = "FINALIZED"
             state.final_response = (
                 "I do not have enough approved facility information to answer that question."
@@ -263,7 +331,7 @@ class FacilityWorkflow:
         val_result = self.citation_validator.validate(
             response_text=response.message,
             citations=response.citations,
-            retrieved_chunks=retrieved_chunks,
+            retrieved_chunks=safe_chunks,
         )
         self._record(
             state,
@@ -281,7 +349,7 @@ class FacilityWorkflow:
             state,
             response.message,
             response.citations,
-            retrieved_chunks=retrieved_chunks,
+            retrieved_chunks=safe_chunks,
             validator_issues=val_result.issues if not val_result.is_valid else None,
         )
 
@@ -294,6 +362,17 @@ class FacilityWorkflow:
         validator_issues: list[str] | None = None,
     ) -> None:
         del retrieved_chunks
+        # Output policy check
+        output_policy = self.output_validator.validate(message)
+        if not output_policy.is_valid:
+            self._log_security_event(
+                event_type="OUTPUT_POLICY_VIOLATION",
+                severity="HIGH",
+                input_text=state.input_text,
+                details={"issues": output_policy.issues},
+                reason_codes=output_policy.reason_codes,
+            )
+
         self._check_bounds(state, model_call=True)
         review = await self.review.run(
             {
@@ -303,16 +382,21 @@ class FacilityWorkflow:
                 "message": message,
                 "citations": citations,
                 "reference_code": state.reference_code,
-                "validator_issues": validator_issues or [],
+                "validator_issues": (validator_issues or [])
+                + (output_policy.issues if not output_policy.is_valid else []),
             }
         )
         self._record_model_output(state, "review", review)
-        if review.approved and not validator_issues:
+        if review.approved and not validator_issues and output_policy.is_valid:
             state.outcome = "FINALIZED"
             state.final_response = message
             self._record(state, "finalize", {"message": message}, ["REVIEW_APPROVED"])
         else:
-            issues = (validator_issues or []) + review.issues
+            issues = (
+                (validator_issues or [])
+                + review.issues
+                + (output_policy.issues if not output_policy.is_valid else [])
+            )
             state.outcome = "HUMAN_REVIEW"
             state.final_response = "A facility manager will review this request."
             self._record(

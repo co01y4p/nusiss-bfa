@@ -141,3 +141,16 @@ class KnowledgeChunkModel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     document: Mapped[KnowledgeDocumentModel] = relationship(back_populates="chunks")
+
+
+class SecurityEventModel(Base):
+    __tablename__ = "security_events"
+
+    id: Mapped[str] = mapped_column(uuid_type, primary_key=True, default=lambda: str(uuid.uuid4()))
+    event_type: Mapped[str] = mapped_column(String(64), index=True)
+    severity: Mapped[str] = mapped_column(String(16), default="MEDIUM", index=True)
+    source_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    input_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    details: Mapped[dict[str, object]] = mapped_column(json_type, default=dict)
+    reason_codes: Mapped[list[str]] = mapped_column(json_type, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)

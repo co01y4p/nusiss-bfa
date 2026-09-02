@@ -3,8 +3,10 @@ from typing import Any, Literal
 
 import httpx
 
+from app.llm.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError, default_circuit_breaker
 from app.llm.gateway import OutputT
 from app.llm.retry import with_transient_retries
+from app.security.pii_redaction import redact_payload
 
 
 class OpenAICompatibleStructuredLLM:
@@ -17,6 +19,8 @@ class OpenAICompatibleStructuredLLM:
         reasoning_effort: str = "minimal",
         max_output_tokens: int = 1024,
         transport: httpx.AsyncBaseTransport | None = None,
+        circuit_breaker: CircuitBreaker | None = None,
+        redact_pii_inputs: bool = True,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
@@ -24,6 +28,8 @@ class OpenAICompatibleStructuredLLM:
         self.reasoning_effort = reasoning_effort
         self.max_output_tokens = max_output_tokens
         self.transport = transport
+        self.circuit_breaker = circuit_breaker or default_circuit_breaker
+        self.redact_pii_inputs = redact_pii_inputs
 
     async def generate(
         self,
@@ -35,22 +41,36 @@ class OpenAICompatibleStructuredLLM:
         temperature: float = 0.0,
         timeout_seconds: float = 20.0,
     ) -> OutputT:
-        if self.api_style == "responses":
-            return await self._generate_responses(
-                system_prompt=system_prompt,
-                user_payload=user_payload,
-                output_schema=output_schema,
-                model=model,
-                timeout_seconds=timeout_seconds,
+        if not self.circuit_breaker.allow_request():
+            raise CircuitBreakerOpenError(
+                "LLM provider circuit breaker is OPEN due to repeated failures"
             )
-        return await self._generate_chat_completion(
-            system_prompt=system_prompt,
-            user_payload=user_payload,
-            output_schema=output_schema,
-            model=model,
-            temperature=temperature,
-            timeout_seconds=timeout_seconds,
-        )
+
+        sanitized_payload = redact_payload(user_payload) if self.redact_pii_inputs else user_payload
+
+        try:
+            if self.api_style == "responses":
+                result = await self._generate_responses(
+                    system_prompt=system_prompt,
+                    user_payload=sanitized_payload,
+                    output_schema=output_schema,
+                    model=model,
+                    timeout_seconds=timeout_seconds,
+                )
+            else:
+                result = await self._generate_chat_completion(
+                    system_prompt=system_prompt,
+                    user_payload=sanitized_payload,
+                    output_schema=output_schema,
+                    model=model,
+                    temperature=temperature,
+                    timeout_seconds=timeout_seconds,
+                )
+            self.circuit_breaker.record_success()
+            return result
+        except Exception:
+            self.circuit_breaker.record_failure()
+            raise
 
     async def _generate_responses(
         self,

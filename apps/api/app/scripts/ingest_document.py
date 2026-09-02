@@ -6,6 +6,7 @@ from app.core.database import SessionLocal
 from app.rag.embeddings import FakeEmbeddings, OpenAICompatibleEmbeddings
 from app.rag.ingestion import DocumentIngestionService
 from app.repositories.postgres.knowledge import SqlAlchemyKnowledgeRepository
+from app.security.file_validation import FileValidator
 
 
 def build_embeddings(settings: object) -> FakeEmbeddings | OpenAICompatibleEmbeddings:
@@ -29,6 +30,12 @@ async def ingest(
     access_scope: str,
     approve: bool,
 ) -> None:
+    validator = FileValidator()
+    val_res = validator.validate_file_path(file_path)
+    if not val_res.is_valid:
+        print(f"Error validating file '{file_path}': {', '.join(val_res.issues)}")
+        raise SystemExit(1)
+
     settings = get_settings()
     session = SessionLocal()
     try:
