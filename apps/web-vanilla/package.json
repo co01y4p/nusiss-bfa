@@ -1,8 +1,0 @@
-{
-  "name": "nusiss-bfa-web-vanilla",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "jose": "^5"
-  }
-}
