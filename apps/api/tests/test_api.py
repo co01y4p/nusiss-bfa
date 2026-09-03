@@ -95,6 +95,46 @@ def test_invalid_manager_credentials_are_rejected(client: TestClient) -> None:
     assert response.status_code == 401
 
 
+def test_building_layout_is_public_to_read_and_manager_only_to_write(
+    client: TestClient,
+) -> None:
+    empty = client.get("/api/v1/facilities/layout")
+    assert empty.status_code == 200
+    assert empty.json()["floors"] == []
+
+    layout = {
+        "floors": [
+            {
+                "name": "Level 1",
+                "facilities": [
+                    {"name": "Toilet 1", "category": "PLUMBING"},
+                    {"name": "Lift Lobby", "category": "LIFT"},
+                ],
+            },
+        ],
+    }
+    assert client.put("/api/v1/facilities/layout", json=layout).status_code == 401
+
+    token_response = client.post(
+        "/api/v1/auth/token",
+        json={
+            "email": "manager@example.com",
+            "password": "correct-horse-battery-staple",
+        },
+    )
+    headers = {"Authorization": f"Bearer {token_response.json()['access_token']}"}
+
+    saved = client.put("/api/v1/facilities/layout", headers=headers, json=layout)
+    assert saved.status_code == 200
+    saved_floors = saved.json()["floors"]
+    assert saved_floors[0]["name"] == "Level 1"
+    assert [f["name"] for f in saved_floors[0]["facilities"]] == ["Toilet 1", "Lift Lobby"]
+
+    refetched = client.get("/api/v1/facilities/layout")
+    assert refetched.status_code == 200
+    assert refetched.json() == saved.json()
+
+
 def test_assistant_persists_triage_and_protects_trace(client: TestClient) -> None:
     assistant_response = client.post(
         "/api/v1/assistant/messages",
