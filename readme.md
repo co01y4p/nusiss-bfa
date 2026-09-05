@@ -16,6 +16,12 @@ M5 through M8 remain planned work.
 - **M2 (Multi-Agent Workflow):** a bounded multi-agent workflow with specialized strict-schema agents, deterministic routing,
   save-before-AI persistence, deterministic critical-hazard priority, allow-listed assignment, fault
   fallbacks, workflow limits, and a manager trace view.
+- **Multi-Agent Flow Logging & Observability (`/assistant` & `/manager`):** interactive execution logging and trace visualization for complete transparency across the multi-agent graph:
+  - **Live Traversal Pipeline:** dynamic visual tracker showing active graph traversal through specialized agents (`security`, `intent`, `persist_incident`, `extract`, `classify`, `priority`, `assign`, `retrieval`, `response`, `review`, `quarantine`) with animated in-flight node progress.
+  - **Decision Highlights & Reason Codes:** transparent audit log explaining routing choices (e.g., prompt injection risk scoring, intent confidence, deterministic P1 safety policy overrides, team assignment heuristics, and citation grounding).
+  - **Strict-Schema Payload Inspector:** expandable per-step JSON inspector with one-click clipboard copying for each agent's typed input/output payloads.
+  - **Categorized Trace Filtering:** instant filtering across security guardrails, routing & triage decisions, and knowledge retrieval & grounding steps.
+  - **API Trace Support & Audit Persistence:** `POST /api/v1/assistant/messages` accepts `include_trace: true` for on-demand execution logging; manager workflows persist full traces in `workflow_runs` for complete incident auditability.
 - **Agent Prompt Control Studio (`/prompts`):** interactive prompt engineering and governance studio for all 8 specialized
   workflow agents (`security`, `intent`, `extraction`, `classification`, `priority`, `assignment`, `response`, `review`).
   Supports persistent custom prompt overrides via database (`agent_prompts`), side-by-side diff comparison against built-in
@@ -46,7 +52,7 @@ serve as a lightweight deployed baseline. The milestone implementation lives und
 
 ```text
 apps/api/          FastAPI API, persistence, agents, workflow, security, migrations, tests
-apps/web/          Next.js report, assistant, tracking, prompts studio, manager, and trace pages
+apps/web/          Next.js report, assistant (with live agent flow logging), tracking, prompts studio, manager, and trace pages
 apps/web-vanilla/  Existing Cloudflare Workers + D1 M1 prototype
 
 infra/compose/     PostgreSQL/pgvector, Valkey, API, and web services

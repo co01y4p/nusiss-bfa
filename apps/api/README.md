@@ -31,7 +31,7 @@ uvicorn app.main:app --reload --port 8000
 - `GET /api/v1/incidents/track/{reference_code}`
 - `GET /api/v1/incidents`
 - `PATCH /api/v1/incidents/{id}/status`
-- `POST /api/v1/assistant/messages`
+- `POST /api/v1/assistant/messages` (supports `include_trace=true` for step-by-step agent logs)
 - `GET /api/v1/incidents/{id}/trace`
 - `GET /api/v1/knowledge/documents`
 - `POST /api/v1/knowledge/documents`
@@ -44,6 +44,13 @@ uvicorn app.main:app --reload --port 8000
 - `PATCH /api/v1/prompts/{agent_name}`
 - `POST /api/v1/prompts/{agent_name}/reset`
 - `POST /api/v1/prompts/{agent_name}/test`
+
+## Multi-agent flow logging and trace auditing
+
+The bounded multi-agent workflow records deterministic traces for every executed graph node:
+- **Trace Step Schema**: each step captures sequence number, node identifier, structured agent output payload, and associated reason codes (e.g., `SAVE_BEFORE_AI`, `CRITICAL_HAZARD_POLICY_OVERRIDE`, `PROMPT_INJECTION_DETECTED`).
+- **On-Demand Assistant Trace**: passing `include_trace: true` in `POST /api/v1/assistant/messages` returns the complete execution trace array alongside the final response for interactive frontend visualization.
+- **Incident Audit Persistence**: manager workflows persist full traces in the `workflow_runs` table, queryable by authenticated managers via `GET /api/v1/incidents/{id}/trace`.
 
 ## Prompt management and governance
 
