@@ -30,6 +30,7 @@ from app.repositories.postgres.knowledge import SqlAlchemyKnowledgeRepository
 from app.repositories.postgres.security_events import PostgresSecurityEventRepository
 from app.security.authentication import CurrentUser, require_manager
 from app.workflows.facility_graph import FacilityWorkflow
+from app.workflows.state import TraceStep
 
 router = APIRouter(tags=["assistant"])
 
@@ -37,12 +38,14 @@ router = APIRouter(tags=["assistant"])
 class AssistantRequest(StrictAgentModel):
     message: str = Field(min_length=1, max_length=8000)
     location: str | None = Field(default=None, max_length=200)
+    include_trace: bool = Field(default=False)
 
 
 class AssistantResponse(StrictAgentModel):
     outcome: str
     message: str
     reference_code: str | None
+    trace: list[TraceStep] | None = Field(default=None)
 
 
 class TraceResponse(StrictAgentModel):
@@ -144,7 +147,11 @@ def build_workflow(db: Session, settings: Settings) -> FacilityWorkflow:
     )
 
 
-@router.post("/assistant/messages", response_model=AssistantResponse)
+@router.post(
+    "/assistant/messages",
+    response_model=AssistantResponse,
+    response_model_exclude_none=True,
+)
 async def submit_message(
     body: AssistantRequest,
     db: Annotated[Session, Depends(get_db)],
@@ -165,6 +172,7 @@ async def submit_message(
         outcome=state.outcome,
         message=state.final_response,
         reference_code=state.reference_code,
+        trace=state.trace if body.include_trace else None,
     )
 
 
