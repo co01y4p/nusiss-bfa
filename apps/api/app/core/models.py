@@ -154,3 +154,16 @@ class SecurityEventModel(Base):
     details: Mapped[dict[str, object]] = mapped_column(json_type, default=dict)
     reason_codes: Mapped[list[str]] = mapped_column(json_type, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class AgentPromptModel(Base):
+    __tablename__ = "agent_prompts"
+
+    id: Mapped[str] = mapped_column(uuid_type, primary_key=True, default=lambda: str(uuid.uuid4()))
+    agent_name: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    version: Mapped[str] = mapped_column(String(32), default="custom")
+    system_prompt: Mapped[str] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    change_summary: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)

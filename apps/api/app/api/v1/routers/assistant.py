@@ -27,6 +27,7 @@ from app.repositories.postgres.incidents import (
     SqlAlchemyWorkflowRunRepository,
 )
 from app.repositories.postgres.knowledge import SqlAlchemyKnowledgeRepository
+from app.repositories.postgres.prompts import SqlAlchemyPromptRepository
 from app.repositories.postgres.security_events import PostgresSecurityEventRepository
 from app.security.authentication import CurrentUser, require_manager
 from app.workflows.facility_graph import FacilityWorkflow
@@ -88,9 +89,11 @@ def build_embeddings(settings: Settings) -> EmbeddingProvider:
 
 
 def build_workflow(db: Session, settings: Settings) -> FacilityWorkflow:
+
     llm = build_llm(settings)
     embeddings = build_embeddings(settings)
     knowledge_repo = SqlAlchemyKnowledgeRepository(db)
+    prompt_repo = SqlAlchemyPromptRepository(db)
     retriever = KnowledgeRetriever(
         repository=knowledge_repo,
         embeddings=embeddings,
@@ -107,39 +110,49 @@ def build_workflow(db: Session, settings: Settings) -> FacilityWorkflow:
             llm,
             model=settings.classifier_model,
             timeout_seconds=settings.agent_timeout_seconds,
+            system_prompt=prompt_repo.get_active_prompt("security"),
         ),
         intent=IntentAgent(
             llm,
             model=settings.classifier_model,
             timeout_seconds=settings.agent_timeout_seconds,
+            system_prompt=prompt_repo.get_active_prompt("intent"),
         ),
         extraction=ExtractionAgent(
             llm,
             model=settings.classifier_model,
             timeout_seconds=settings.agent_timeout_seconds,
+            system_prompt=prompt_repo.get_active_prompt("extraction"),
         ),
         classification=ClassificationAgent(
             llm,
             model=settings.classifier_model,
             timeout_seconds=settings.agent_timeout_seconds,
+            system_prompt=prompt_repo.get_active_prompt("classification"),
         ),
         priority=PriorityAgent(
             llm,
             model=settings.classifier_model,
             timeout_seconds=settings.agent_timeout_seconds,
+            system_prompt=prompt_repo.get_active_prompt("priority"),
         ),
         assignment=AssignmentAgent(
             llm,
             model=settings.classifier_model,
             timeout_seconds=settings.agent_timeout_seconds,
+            system_prompt=prompt_repo.get_active_prompt("assignment"),
         ),
         response=ResponseAgent(
-            llm, model=settings.generator_model, timeout_seconds=settings.agent_timeout_seconds
+            llm,
+            model=settings.generator_model,
+            timeout_seconds=settings.agent_timeout_seconds,
+            system_prompt=prompt_repo.get_active_prompt("response"),
         ),
         review=ReviewAgent(
             llm,
             model=settings.classifier_model,
             timeout_seconds=settings.agent_timeout_seconds,
+            system_prompt=prompt_repo.get_active_prompt("review"),
         ),
         retriever=retriever,
         citation_validator=citation_validator,

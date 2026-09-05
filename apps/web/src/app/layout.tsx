@@ -23,8 +23,10 @@ export default function RootLayout({
             <Link href="/assistant">Assistant</Link>
             <Link href="/knowledge">Knowledge (RAG)</Link>
             <Link href="/track">Track</Link>
+            <Link href="/prompts">Prompts</Link>
             <Link href="/manager">Manager</Link>
           </nav>
+
         </header>
         <main>{children}</main>
         <footer>Bounded multi-agent capstone harness</footer>

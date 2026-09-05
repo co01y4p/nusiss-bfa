@@ -19,11 +19,22 @@ class BaseAgent(ABC, Generic[AgentOutputT]):  # noqa: UP046
     name: str
     output_schema: type[AgentOutputT]
 
-    def __init__(self, llm: StructuredLLM, *, model: str, timeout_seconds: float) -> None:
+    def __init__(
+        self,
+        llm: StructuredLLM,
+        *,
+        model: str,
+        timeout_seconds: float,
+        system_prompt: str | None = None,
+    ) -> None:
         self.llm = llm
         self.model = model
         self.timeout_seconds = timeout_seconds
-        self.system_prompt = load_prompt(self.name)
+        self.system_prompt = (
+            system_prompt.strip()
+            if system_prompt and system_prompt.strip()
+            else load_prompt(self.name)
+        )
 
     async def run(self, payload: dict[str, Any]) -> AgentOutputT:
         try:
