@@ -16,7 +16,12 @@ M5 through M8 remain planned work.
 - **M2 (Multi-Agent Workflow):** a bounded multi-agent workflow with specialized strict-schema agents, deterministic routing,
   save-before-AI persistence, deterministic critical-hazard priority, allow-listed assignment, fault
   fallbacks, workflow limits, and a manager trace view.
+- **Agent Prompt Control Studio (`/prompts`):** interactive prompt engineering and governance studio for all 8 specialized
+  workflow agents (`security`, `intent`, `extraction`, `classification`, `priority`, `assignment`, `response`, `review`).
+  Supports persistent custom prompt overrides via database (`agent_prompts`), side-by-side diff comparison against built-in
+  `v1.yaml` prompts, real-time live testing playground with preloaded facility payloads, latency profiling, and instant factory reset.
 - **M3 (RAG Knowledge Base):** pgvector-backed retrieval-augmented generation (RAG) knowledge base over approved facility
+
   documents, multi-format parsing (.md, .txt, .pdf), heading-aware chunking (~400–800 tokens), hybrid
   vector and keyword search, citation validator verifying cited chunk IDs and claim grounding, refusal
   fallback for unapproved/absent context, CLI ingestion script (`python -m app.scripts.ingest_document`),
@@ -41,8 +46,9 @@ serve as a lightweight deployed baseline. The milestone implementation lives und
 
 ```text
 apps/api/          FastAPI API, persistence, agents, workflow, security, migrations, tests
-apps/web/          Next.js report, assistant, tracking, manager, and trace pages
+apps/web/          Next.js report, assistant, tracking, prompts studio, manager, and trace pages
 apps/web-vanilla/  Existing Cloudflare Workers + D1 M1 prototype
+
 infra/compose/     PostgreSQL/pgvector, Valkey, API, and web services
 docs/plan/         M0-M8 milestone specifications
 .github/workflows/ CI and the existing vanilla portal deployment

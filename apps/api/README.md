@@ -39,7 +39,22 @@ uvicorn app.main:app --reload --port 8000
 - `DELETE /api/v1/knowledge/documents/{id}`
 - `POST /api/v1/knowledge/search`
 
+- `GET /api/v1/prompts`
+- `GET /api/v1/prompts/{agent_name}`
+- `PATCH /api/v1/prompts/{agent_name}`
+- `POST /api/v1/prompts/{agent_name}/reset`
+- `POST /api/v1/prompts/{agent_name}/test`
+
+## Prompt management and governance
+
+System prompts for each of the 8 bounded workflow agents are configured with defaults and dynamic overrides:
+- **Factory defaults**: stored as versioned YAML files on disk under `app/prompts/<agent_name>/v1.yaml`.
+- **Database persistence**: runtime prompt customizations are persisted in the `agent_prompts` table with version notes.
+- **Dynamic resolution**: workflow agents load active prompt overrides at request time with automatic fallback to `v1.yaml`.
+- **Live playground**: prompts can be evaluated against sample payloads with execution latency and schema validation via `POST /api/v1/prompts/{agent_name}/test`.
+
 ## OpenAI configuration
+
 
 Set `LLM_API_KEY` in the repository-level `.env` file. The default production-like configuration
 uses `LLM_PROVIDER=openai`, `LLM_BASE_URL=https://api.openai.com/v1`, and `gpt-5-nano` for both
