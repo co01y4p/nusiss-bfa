@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -19,6 +20,15 @@ class UpdateIncidentStatusInput(BaseModel):
 
     incident_id: str
     status: str
+
+
+class FindRecentIncidentsInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    location: str = Field(min_length=1, max_length=200)
+    lookback_hours: int = Field(default=72, ge=1, le=720)
+    limit: int = Field(default=5, ge=1, le=20)
+    exclude_incident_id: str | None = None
 
 
 def register_incident_tools(registry: "ToolRegistry", incident_repo: IncidentRepository) -> None:
@@ -61,4 +71,39 @@ def register_incident_tools(registry: "ToolRegistry", incident_repo: IncidentRep
         input_schema=UpdateIncidentStatusInput,
         required_role="MANAGER",
         handler=update_status,
+    )
+
+    def find_recent_incidents(args: FindRecentIncidentsInput) -> list[dict[str, str | None]]:
+        since = datetime.now(UTC) - timedelta(hours=args.lookback_hours)
+        matches = incident_repo.find_similar(
+            location=args.location,
+            since=since,
+            exclude_id=args.exclude_incident_id,
+            limit=args.limit,
+        )
+        return [
+            {
+                "reference_code": incident.reference_code,
+                "location": incident.location,
+                "category": incident.category,
+                "priority": incident.priority,
+                "status": (
+                    incident.status.value
+                    if hasattr(incident.status, "value")
+                    else str(incident.status)
+                ),
+                "created_at": incident.created_at.isoformat(),
+            }
+            for incident in matches
+        ]
+
+    registry.register(
+        name="find_recent_incidents",
+        description=(
+            "Find recent incidents reported at a similar location, for pattern/duplicate "
+            "context. Internal workflow use only, not exposed to end users."
+        ),
+        input_schema=FindRecentIncidentsInput,
+        required_role="SYSTEM",
+        handler=find_recent_incidents,
     )

@@ -30,6 +30,7 @@ from app.repositories.postgres.knowledge import SqlAlchemyKnowledgeRepository
 from app.repositories.postgres.prompts import SqlAlchemyPromptRepository
 from app.repositories.postgres.security_events import PostgresSecurityEventRepository
 from app.security.authentication import CurrentUser, require_manager
+from app.tools import ToolRegistry, register_incident_tools, register_knowledge_tools
 from app.workflows.facility_graph import FacilityWorkflow
 from app.workflows.state import TraceStep
 
@@ -88,6 +89,15 @@ def build_embeddings(settings: Settings) -> EmbeddingProvider:
     return FakeEmbeddings(dim=settings.embedding_dim)
 
 
+def build_tool_registry(
+    incident_repo: SqlAlchemyIncidentRepository, retriever: KnowledgeRetriever
+) -> ToolRegistry:
+    registry = ToolRegistry()
+    register_incident_tools(registry, incident_repo)
+    register_knowledge_tools(registry, retriever)
+    return registry
+
+
 def build_workflow(db: Session, settings: Settings) -> FacilityWorkflow:
 
     llm = build_llm(settings)
@@ -101,10 +111,11 @@ def build_workflow(db: Session, settings: Settings) -> FacilityWorkflow:
         default_similarity_threshold=settings.rag_similarity_threshold,
     )
     citation_validator = CitationValidator()
+    incident_repository = SqlAlchemyIncidentRepository(db)
 
     return FacilityWorkflow(
         settings=settings,
-        incident_repository=SqlAlchemyIncidentRepository(db),
+        incident_repository=incident_repository,
         workflow_repository=SqlAlchemyWorkflowRunRepository(db),
         security=SecurityAgent(
             llm,
@@ -157,6 +168,7 @@ def build_workflow(db: Session, settings: Settings) -> FacilityWorkflow:
         retriever=retriever,
         citation_validator=citation_validator,
         security_events=PostgresSecurityEventRepository(db),
+        tools=build_tool_registry(incident_repository, retriever),
     )
 
 

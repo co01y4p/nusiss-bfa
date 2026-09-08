@@ -139,9 +139,16 @@ class FakeStructuredLLM:
                 "reason_codes": ["ALLOWLIST_MAP"],
             }
         if schema_name == "ResponseOutput":
+            status_lookup = payload.get("status_lookup")
             reference = payload.get("reference_code")
             chunks = payload.get("retrieval_chunks", [])
-            if reference:
+            if isinstance(status_lookup, dict) and status_lookup:
+                ref = status_lookup.get("reference_code", "")
+                incident_status = status_lookup.get("status", "UNKNOWN")
+                content = f"Incident {ref} is currently {incident_status}."
+                citations: list[str] = []
+                reasons = ["STATUS_REPORTED"]
+            elif reference:
                 content = f"Your report has been saved. Reference: {reference}."
                 citations = []
                 reasons = ["SAFE_TEMPLATE"]

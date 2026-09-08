@@ -1,4 +1,5 @@
 import asyncio
+import re
 from typing import Any, Protocol
 
 from pydantic import BaseModel
@@ -20,6 +21,7 @@ from app.repositories.interfaces.security import SecurityEventRepository
 from app.security.output_policy import OutputPolicyValidator
 from app.security.prompt_injection import PromptInjectionDetector
 from app.services.incident_service import IncidentService
+from app.tools.registry import ToolRegistry
 from app.workflows.state import WorkflowState
 
 
@@ -50,6 +52,7 @@ class FacilityWorkflow:
         citation_validator: CitationValidator | None = None,
         security_events: SecurityEventRepository | None = None,
         output_validator: OutputPolicyValidator | None = None,
+        tools: ToolRegistry | None = None,
     ) -> None:
         self.settings = settings
         self.incidents = incident_repository
@@ -67,6 +70,7 @@ class FacilityWorkflow:
         self.security_events = security_events
         self.output_validator = output_validator or OutputPolicyValidator()
         self.injection_detector = PromptInjectionDetector()
+        self.tools = tools
 
     def _check_bounds(self, state: WorkflowState, *, model_call: bool = False) -> None:
         if state.step_count >= self.settings.max_agent_steps:
@@ -166,6 +170,8 @@ class FacilityWorkflow:
             await self._incident_path(state, payload)
         elif intent.intent == Intent.FACILITY_QA:
             await self._faq_path(state, payload)
+        elif intent.intent == Intent.STATUS_QUERY:
+            await self._status_query_path(state)
         else:
             state.outcome = "HUMAN_REVIEW"
             state.final_response = "A facility manager will review this request."
@@ -194,7 +200,38 @@ class FacilityWorkflow:
         extraction = await self.extraction.run(payload)
         self._record_model_output(state, "extract", extraction)
 
-        classify_payload = {"text": state.input_text, "summary": extraction.summary}
+        recent_incidents: list[dict[str, Any]] = []
+        if self.tools and self.tools.is_registered("find_recent_incidents"):
+            self._check_bounds(state)
+            recent_lookup = await self.tools.execute(
+                "find_recent_incidents",
+                {"location": extraction.location, "exclude_incident_id": incident.id},
+                caller_role="SYSTEM",
+            )
+            if recent_lookup.success and recent_lookup.data:
+                recent_incidents = recent_lookup.data
+            # Trace is exposed to the (unauthenticated) caller via include_trace; never
+            # echo other occupants' reference codes here, only an aggregate summary.
+            self._record(
+                state,
+                "recent_incident_lookup",
+                {
+                    "count": len(recent_incidents),
+                    "categories": sorted(
+                        {m["category"] for m in recent_incidents if m.get("category")}
+                    ),
+                    "priorities": sorted(
+                        {m["priority"] for m in recent_incidents if m.get("priority")}
+                    ),
+                },
+                ["RECENT_INCIDENT_CONTEXT"] if recent_incidents else ["NO_RECENT_MATCHES"],
+            )
+
+        classify_payload = {
+            "text": state.input_text,
+            "summary": extraction.summary,
+            "recent_similar_incidents": recent_incidents,
+        }
         self._check_bounds(state, model_call=True)
         classification = await self.classification.run(classify_payload)
         self._record_model_output(state, "classify", classification)
@@ -203,6 +240,7 @@ class FacilityWorkflow:
             "text": state.input_text,
             "hazard_codes": [code.value for code in extraction.hazard_codes],
             "category": classification.category.value,
+            "recent_similar_incidents": recent_incidents,
         }
         self._check_bounds(state, model_call=True)
         priority = await self.priority.decide(priority_payload)
@@ -353,6 +391,49 @@ class FacilityWorkflow:
             validator_issues=val_result.issues if not val_result.is_valid else None,
         )
 
+    async def _status_query_path(self, state: WorkflowState) -> None:
+        match = re.search(r"\bBFA-[A-Z0-9]{6,12}\b", state.input_text.upper())
+        if not self.tools or not self.tools.is_registered("lookup_incident_status") or not match:
+            state.outcome = "HUMAN_REVIEW"
+            state.final_response = "A facility manager will review this request."
+            self._record(
+                state,
+                "human_review",
+                {"reference_code_found": bool(match)},
+                ["STATUS_QUERY_UNRESOLVED", "MANUAL_TRIAGE"],
+            )
+            return
+
+        reference_code = match.group(0)
+        lookup = await self.tools.execute(
+            "lookup_incident_status", {"reference_code": reference_code}, caller_role="PUBLIC"
+        )
+        found = bool(lookup.success and lookup.data)
+        self._record(
+            state,
+            "status_lookup",
+            {"reference_code": reference_code, "found": found},
+            lookup.reason_codes,
+        )
+        if not found:
+            state.outcome = "HUMAN_REVIEW"
+            state.final_response = "A facility manager will review this request."
+            self._record(
+                state,
+                "human_review",
+                {"reference_code": reference_code},
+                ["REFERENCE_CODE_NOT_FOUND", "MANUAL_TRIAGE"],
+            )
+            return
+
+        state.reference_code = reference_code
+        self._check_bounds(state, model_call=True)
+        response = await self.response.run({"status_lookup": lookup.data})
+        self._record_model_output(state, "status_response", response)
+        await self._review_and_finalize(
+            state, response.message, response.citations, response_type="STATUS_UPDATE"
+        )
+
     async def _review_and_finalize(
         self,
         state: WorkflowState,
@@ -360,6 +441,7 @@ class FacilityWorkflow:
         citations: list[str],
         retrieved_chunks: list[Any] | None = None,
         validator_issues: list[str] | None = None,
+        response_type: str | None = None,
     ) -> None:
         del retrieved_chunks
         # Output policy check
@@ -377,7 +459,8 @@ class FacilityWorkflow:
         review = await self.review.run(
             {
                 "response_type": (
-                    "INCIDENT_ACKNOWLEDGEMENT" if state.incident_id else "FACILITY_ANSWER"
+                    response_type
+                    or ("INCIDENT_ACKNOWLEDGEMENT" if state.incident_id else "FACILITY_ANSWER")
                 ),
                 "message": message,
                 "citations": citations,

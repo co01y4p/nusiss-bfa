@@ -10,6 +10,8 @@ from app.agents.review import ReviewAgent
 from app.agents.security import SecurityAgent
 from app.core.config import Settings
 from app.llm.fake import FakeStructuredLLM
+from app.tools.incident_tools import register_incident_tools
+from app.tools.registry import ToolRegistry
 from app.workflows.facility_graph import FacilityWorkflow
 from tests.fakes import InMemoryIncidentRepository, InMemoryWorkflowRunRepository
 
@@ -28,6 +30,8 @@ def make_workflow(
     args = {"llm": provider, "model": "fake", "timeout_seconds": 1}
     incidents = InMemoryIncidentRepository()
     runs = InMemoryWorkflowRunRepository()
+    tools = ToolRegistry()
+    register_incident_tools(tools, incidents)
     workflow = FacilityWorkflow(
         settings=settings,
         incident_repository=incidents,
@@ -40,6 +44,7 @@ def make_workflow(
         assignment=AssignmentAgent(**args),
         response=ResponseAgent(**args),
         review=ReviewAgent(**args),
+        tools=tools,
     )
     return workflow, incidents, runs
 
@@ -142,3 +147,64 @@ async def test_model_call_limit_stops_with_safe_human_review() -> None:
     assert [step.node for step in state.trace] == ["security", "human_review"]
     assert not incidents.items
     assert len(runs.runs) == 1
+
+
+@pytest.mark.asyncio
+async def test_status_query_reports_existing_incident() -> None:
+    workflow, incidents, _ = make_workflow()
+
+    created = await workflow.run(text="There is a broken light fitting.", location="Level 3")
+    reference_code = created.reference_code
+    assert reference_code is not None
+
+    state = await workflow.run(text=f"What is the status of {reference_code}?")
+
+    assert state.outcome == "FINALIZED"
+    assert reference_code in state.final_response
+    assert [step.node for step in state.trace] == [
+        "security",
+        "intent",
+        "status_lookup",
+        "status_response",
+        "review",
+        "finalize",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_status_query_without_reference_code_reaches_human_review() -> None:
+    workflow, _, _ = make_workflow()
+
+    state = await workflow.run(text="What is the status of my report?")
+
+    assert state.outcome == "HUMAN_REVIEW"
+    assert [step.node for step in state.trace][-1] == "human_review"
+
+
+@pytest.mark.asyncio
+async def test_status_query_unknown_reference_code_reaches_human_review() -> None:
+    workflow, _, _ = make_workflow()
+
+    state = await workflow.run(text="What is the status of BFA-9999999999?")
+
+    assert state.outcome == "HUMAN_REVIEW"
+    nodes = [step.node for step in state.trace]
+    assert nodes[-1] == "human_review"
+    assert "status_lookup" in nodes
+
+
+@pytest.mark.asyncio
+async def test_recent_incidents_feed_classification_and_priority_context() -> None:
+    provider = FakeStructuredLLM()
+    workflow, _, _ = make_workflow(provider)
+
+    await workflow.run(text="A ceiling light fitting is broken.", location="Block A Level 5")
+    state = await workflow.run(text="Another light fitting is broken.", location="Block A Level 5")
+
+    assert state.outcome == "FINALIZED"
+    assert "recent_incident_lookup" in [step.node for step in state.trace]
+
+    classify_calls = [c for c in provider.calls if c["schema"] == "ClassificationOutput"]
+    priority_calls = [c for c in provider.calls if c["schema"] == "PrioritySignalOutput"]
+    assert len(classify_calls[-1]["payload"]["recent_similar_incidents"]) == 1
+    assert len(priority_calls[-1]["payload"]["recent_similar_incidents"]) == 1

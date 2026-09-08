@@ -138,6 +138,24 @@ const NODE_METADATA: Record<string, NodeMeta> = {
     category: "policy",
     role: "Graceful fallback gate for low confidence or policy violations",
   },
+  recent_incident_lookup: {
+    title: "Recent Incident Lookup (Tool)",
+    icon: "🧭",
+    category: "domain",
+    role: "Tool call: find_recent_incidents — pattern/duplicate context near this location",
+  },
+  status_lookup: {
+    title: "Status Lookup (Tool)",
+    icon: "🪪",
+    category: "domain",
+    role: "Tool call: lookup_incident_status — allow-listed PUBLIC-role status lookup",
+  },
+  status_response: {
+    title: "Response Agent",
+    icon: "✍️",
+    category: "domain",
+    role: "Synthesize a status update from the tool lookup result",
+  },
 };
 
 function getNodeMeta(node: string): NodeMeta {
@@ -343,6 +361,42 @@ function getDecisionHighlight(step: TraceStep): {
     };
   }
 
+  if (node === "recent_incident_lookup") {
+    const count = asNumber(output.count) ?? 0;
+    if (count === 0) {
+      return {
+        text: `🧭 Tool call find_recent_incidents: no recent similar reports near this location.`,
+        type: "neutral",
+      };
+    }
+    return {
+      text: `🧭 Tool call find_recent_incidents: found ${count} recent report(s) near this location, passed to Classification & Priority as reference context.`,
+      type: "neutral",
+    };
+  }
+
+  if (node === "status_lookup") {
+    const found = Boolean(output.found);
+    const ref = asString(output.reference_code) || "";
+    if (found) {
+      return {
+        text: `🪪 Tool call lookup_incident_status: found incident ${ref}.`,
+        type: "safe",
+      };
+    }
+    return {
+      text: `🪪 Tool call lookup_incident_status: no incident found for ${ref}. Routing to human review.`,
+      type: "override",
+    };
+  }
+
+  if (node === "status_response") {
+    return {
+      text: `✍️ Status update generated from verified tool lookup data.`,
+      type: "neutral",
+    };
+  }
+
   return {
     text: `Node ${node} executed with reason codes: ${reason_codes.join(", ") || "None"}`,
     type: "neutral",
@@ -447,6 +501,25 @@ function getHighlightedAttributes(
       value: output.approved ? "Approved" : "Flagged",
     });
     attrs.push({ label: "Output Policy", value: "Safe & PII-Redacted" });
+  } else if (node === "recent_incident_lookup") {
+    const count = asNumber(output.count) ?? 0;
+    attrs.push({ label: "Similar Recent Incidents", value: `${count} match(es)` });
+    const categories = asArray(output.categories);
+    if (categories && categories.length) {
+      attrs.push({ label: "Categories Seen", value: categories.join(", ") });
+    }
+    const priorities = asArray(output.priorities);
+    if (priorities && priorities.length) {
+      attrs.push({ label: "Priorities Seen", value: priorities.join(", ") });
+    }
+    attrs.push({ label: "Tool", value: "find_recent_incidents (SYSTEM role)" });
+  } else if (node === "status_lookup") {
+    attrs.push({
+      label: "Reference Code",
+      value: asString(output.reference_code) || "N/A",
+    });
+    attrs.push({ label: "Found", value: output.found ? "Yes" : "No" });
+    attrs.push({ label: "Tool", value: "lookup_incident_status (PUBLIC role)" });
   }
 
   return attrs;

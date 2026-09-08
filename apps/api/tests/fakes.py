@@ -36,6 +36,25 @@ class InMemoryIncidentRepository:
     def list_recent(self, *, limit: int = 200, offset: int = 0) -> list[Incident]:
         return list(self.items.values())[offset : offset + limit]
 
+    def find_similar(
+        self,
+        *,
+        location: str,
+        since: datetime,
+        exclude_id: str | None = None,
+        limit: int = 5,
+    ) -> list[Incident]:
+        needle = location.strip().lower()
+        matches = [
+            item
+            for item in self.items.values()
+            if item.id != exclude_id
+            and needle in item.location.lower()
+            and item.created_at >= since
+        ]
+        matches.sort(key=lambda item: item.created_at, reverse=True)
+        return matches[:limit]
+
     def update_status(self, incident_id: str, status: str) -> Incident | None:
         incident = self.items.get(incident_id)
         if incident is None:
