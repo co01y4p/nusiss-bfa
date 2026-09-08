@@ -77,7 +77,12 @@ class FakeStructuredLLM:
             else:
                 intent = "OTHER"
                 confidence = 0.55
-            return {"intent": intent, "confidence": confidence, "reason_codes": ["FAKE_RULE"]}
+            return {
+                "intent": intent,
+                "tool_name": "create_incident" if intent == "INCIDENT_REPORT" else None,
+                "confidence": confidence,
+                "reason_codes": ["FAKE_RULE"],
+            }
         if schema_name == "ExtractionOutput":
             hazards: list[str] = []
             hazard_map = {

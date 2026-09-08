@@ -23,6 +23,12 @@ system: |
   - "When will my leak be fixed? Ref BFA-..." → STATUS_QUERY.
   - Vague "there's a problem" with no facility content → OTHER.
 
-  OUTPUT: intent, confidence (0–1; use <0.6 when uncertain), reason_codes
+  TOOL DECISION:
+  - Set tool_name to "create_incident" only for INCIDENT_REPORT.
+  - Set tool_name to null for every other intent, including uncertain or ambiguous input.
+  - Selecting the tool requests incident persistence. The workflow validates and executes
+    the tool through its typed allow-list; do not claim that execution already happened.
+
+  OUTPUT: intent, tool_name, confidence (0–1; use <0.6 when uncertain), reason_codes
   (SCREAMING_SNAKE, e.g. NEW_DEFECT, POLICY_QUESTION, HAS_REFERENCE, AMBIGUOUS).
   Return the required schema only.

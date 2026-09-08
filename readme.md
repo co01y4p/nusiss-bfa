@@ -14,10 +14,10 @@ M5 through M8 remain planned work.
 - **M1 (Non-Agentic Baseline):** public incident creation and tracking, manager JWT authentication with Argon2id password
   hashes, a manager queue, controlled status transitions, and Alembic migrations.
 - **M2 (Multi-Agent Workflow):** a bounded multi-agent workflow with specialized strict-schema agents, deterministic routing,
-  save-before-AI persistence, deterministic critical-hazard priority, allow-listed assignment, fault
-  fallbacks, workflow limits, and a manager trace view.
+  intent-selected incident creation, deterministic critical-hazard priority, allow-listed assignment,
+  fault fallbacks, workflow limits, and a manager trace view.
 - **Multi-Agent Flow Logging & Observability (`/assistant` & `/manager`):** interactive execution logging and trace visualization for complete transparency across the multi-agent graph:
-  - **Live Traversal Pipeline:** dynamic visual tracker showing active graph traversal through specialized agents (`security`, `intent`, `persist_incident`, `extract`, `recent_incident_lookup`, `classify`, `priority`, `assign`, `retrieval`, `response`, `status_lookup`, `status_response`, `review`, `quarantine`) with animated in-flight node progress.
+  - **Live Traversal Pipeline:** dynamic visual tracker showing active graph traversal through specialized agents and tools (`security`, `intent`, `create_incident`, `extract`, `recent_incident_lookup`, `classify`, `priority`, `assign`, `retrieval`, `response`, `status_lookup`, `status_response`, `review`, `quarantine`) with animated in-flight node progress.
   - **Decision Highlights & Reason Codes:** transparent audit log explaining routing choices (e.g., prompt injection risk scoring, intent confidence, deterministic P1 safety policy overrides, team assignment heuristics, and citation grounding).
   - **Strict-Schema Payload Inspector:** expandable per-step JSON inspector with one-click clipboard copying for each agent's typed input/output payloads.
   - **Categorized Trace Filtering:** instant filtering across security guardrails, routing & triage decisions, and knowledge retrieval & grounding steps.
@@ -36,7 +36,8 @@ M5 through M8 remain planned work.
   - **Prompt Injection Defense:** heuristic and pattern-based detection for direct jailbreaks/instruction overrides, as well as indirect prompt injection embedded inside retrieved RAG document chunks. High-risk payloads route to quarantine immediately.
   - **PII Redaction Engine:** automated scanning and redaction of Singapore NRIC/FIN, SSN, credit cards, emails, phone numbers, and secrets before payloads reach external LLM providers.
   - **Output Policy Validation:** post-generation safety checks verifying responses are free of prompt disclosures, XSS/HTML injections, unauthorized system actions, and unredacted PII.
-  - **Typed Tool Allow-List (`ToolRegistry`):** strict schema validation and role-based access control (`PUBLIC` / `MANAGER` / `SYSTEM`) preventing arbitrary or unauthorized tool execution. Now wired into the live workflow with two active tools:
+  - **Typed Tool Allow-List (`ToolRegistry`):** strict schema validation and role-based access control (`PUBLIC` / `MANAGER` / `SYSTEM`) preventing arbitrary or unauthorized tool execution. The live workflow includes these active tools:
+    - `create_incident` (`SYSTEM`) is selected by the Intent Router Agent for `INCIDENT_REPORT` requests and persists the initial incident before downstream extraction, classification, and priority agents run.
     - `lookup_incident_status` (`PUBLIC`) resolves the `STATUS_QUERY` intent — an occupant asking about an existing reference code gets a grounded status update (`status_lookup` → `status_response` trace nodes) instead of falling through to manual review.
     - `find_recent_incidents` (`SYSTEM`) runs automatically on every `INCIDENT_REPORT`, searching recent reports near the same location and passing them as read-only reference context into the Classification and Priority agents (`recent_incident_lookup` trace node) — usable to disambiguate an unclear category or justify escalating a recurring pattern, never to downgrade a hazard.
   - **LLM Circuit Breaker:** state machine (`CLOSED`, `OPEN`, `HALF_OPEN`) preventing cascading provider failures by failing fast to manual triage after repeated upstream errors.

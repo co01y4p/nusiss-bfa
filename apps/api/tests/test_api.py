@@ -43,6 +43,8 @@ def client() -> Generator[TestClient, None, None]:
         llm_provider="fake",
         classifier_model="fake-classifier",
         generator_model="fake-generator",
+        max_agent_steps=16,
+        max_model_calls=10,
     )
     with TestClient(app) as test_client:
         yield test_client
@@ -129,7 +131,7 @@ def test_assistant_persists_triage_and_protects_trace(client: TestClient) -> Non
     )
     assert trace_response.status_code == 200
     nodes = [step["node"] for step in trace_response.json()["trace"]]
-    assert nodes[:3] == ["security", "intent", "persist_incident"]
+    assert nodes[:3] == ["security", "intent", "create_incident"]
     assert "notify_critical" in nodes
     assert nodes[-1] == "finalize"
 

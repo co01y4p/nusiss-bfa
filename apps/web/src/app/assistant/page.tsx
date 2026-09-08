@@ -54,11 +54,11 @@ const NODE_METADATA: Record<string, NodeMeta> = {
     category: "router",
     role: "Intent classification & dynamic supervisor graph routing",
   },
-  persist_incident: {
-    title: "Save-Before-AI Engine",
-    icon: "💾",
+  create_incident: {
+    title: "Create Incident Tool",
+    icon: "🛠️",
     category: "persistence",
-    role: "Deterministic database state persistence before AI calls",
+    role: "Tool call selected by the Intent Router Agent to persist a new incident",
   },
   extract: {
     title: "Extraction Agent",
@@ -215,25 +215,38 @@ function getDecisionHighlight(step: TraceStep): {
 
   if (node === "intent") {
     const intent = asString(output.intent) || "UNKNOWN";
+    const selectedTool = asString(output.tool_name);
     const conf = asNumber(output.confidence);
     const confidence =
       conf !== undefined ? ` (${Math.round(conf * 100)}% confidence)` : "";
     const route =
       intent === "INCIDENT_REPORT"
-        ? "Incident Triage Workflow (Triage + Priority + Assignment)"
+        ? "create_incident Tool, then Incident Triage Workflow"
         : intent === "FACILITY_QA"
           ? "Facility Knowledge RAG Pipeline (Vector Search + Citations)"
-          : "Human Review Fallback Queue";
+          : intent === "STATUS_QUERY"
+            ? "Incident Status Lookup Workflow"
+            : "Human Review Fallback Queue";
+    const toolDecision = selectedTool
+      ? ` Selected tool: ${selectedTool}.`
+      : " No tool selected.";
     return {
-      text: `🎯 Intent classified as ${intent}${confidence} ➔ Routing to: ${route}.`,
+      text: `🎯 Intent classified as ${intent}${confidence} ➔ Routing to: ${route}.${toolDecision}`,
       type: "neutral",
     };
   }
 
-  if (node === "persist_incident") {
+  if (node === "create_incident") {
     const ref = asString(output.reference_code) || "";
+    const succeeded = Boolean(output.success);
+    if (!succeeded) {
+      return {
+        text: `🛠️ Tool call create_incident failed safely. Routing to human review without continuing incident triage.`,
+        type: "override",
+      };
+    }
     return {
-      text: `💾 Save-Before-AI Invariant: Incident #${ref} persisted to PostgreSQL before executing external model calls.`,
+      text: `🛠️ Tool call create_incident: Incident #${ref} persisted after selection by the Intent Router Agent.`,
       type: "safe",
     };
   }
@@ -432,12 +445,16 @@ function getHighlightedAttributes(
         value: `${Math.round(conf * 100)}%`,
       });
     }
-  } else if (node === "persist_incident") {
+    attrs.push({
+      label: "Selected Tool",
+      value: asString(output.tool_name) || "None",
+    });
+  } else if (node === "create_incident") {
     attrs.push({
       label: "Reference Code",
       value: asString(output.reference_code) || "N/A",
     });
-    attrs.push({ label: "DB Invariant", value: "SAVE_BEFORE_AI" });
+    attrs.push({ label: "Tool", value: "create_incident (SYSTEM role)" });
   } else if (node === "extract") {
     attrs.push({
       label: "Extracted Summary",
@@ -503,7 +520,10 @@ function getHighlightedAttributes(
     attrs.push({ label: "Output Policy", value: "Safe & PII-Redacted" });
   } else if (node === "recent_incident_lookup") {
     const count = asNumber(output.count) ?? 0;
-    attrs.push({ label: "Similar Recent Incidents", value: `${count} match(es)` });
+    attrs.push({
+      label: "Similar Recent Incidents",
+      value: `${count} match(es)`,
+    });
     const categories = asArray(output.categories);
     if (categories && categories.length) {
       attrs.push({ label: "Categories Seen", value: categories.join(", ") });
@@ -519,7 +539,10 @@ function getHighlightedAttributes(
       value: asString(output.reference_code) || "N/A",
     });
     attrs.push({ label: "Found", value: output.found ? "Yes" : "No" });
-    attrs.push({ label: "Tool", value: "lookup_incident_status (PUBLIC role)" });
+    attrs.push({
+      label: "Tool",
+      value: "lookup_incident_status (PUBLIC role)",
+    });
   }
 
   return attrs;
@@ -768,7 +791,7 @@ export default function AssistantPage() {
                 <span>💧 Aircon Water Leak</span>
               </div>
               <div className="scenario-card-desc">
-                Tests Save-Before-AI + Extraction + Domain Classifier
+                Tests Intent-Selected Tool Call + Extraction + Domain Classifier
               </div>
               <span
                 className="scenario-card-pill"
@@ -1253,7 +1276,7 @@ export default function AssistantPage() {
                                 code.startsWith("CRITICAL_HAZARD") ||
                                 code.includes("INJECTION")
                                   ? "critical"
-                                  : code === "SAVE_BEFORE_AI"
+                                  : code === "TOOL_EXECUTION_SUCCESS"
                                     ? "save"
                                     : ""
                               }`}

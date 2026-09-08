@@ -48,7 +48,7 @@ uvicorn app.main:app --reload --port 8000
 ## Multi-agent flow logging and trace auditing
 
 The bounded multi-agent workflow records deterministic traces for every executed graph node:
-- **Trace Step Schema**: each step captures sequence number, node identifier, structured agent output payload, and associated reason codes (e.g., `SAVE_BEFORE_AI`, `CRITICAL_HAZARD_POLICY_OVERRIDE`, `PROMPT_INJECTION_DETECTED`).
+- **Trace Step Schema**: each step captures sequence number, node identifier, structured agent output payload, and associated reason codes (e.g., `TOOL_EXECUTION_SUCCESS`, `CRITICAL_HAZARD_POLICY_OVERRIDE`, `PROMPT_INJECTION_DETECTED`).
 - **On-Demand Assistant Trace**: passing `include_trace: true` in `POST /api/v1/assistant/messages` returns the complete execution trace array alongside the final response for interactive frontend visualization.
 - **Incident Audit Persistence**: manager workflows persist full traces in the `workflow_runs` table, queryable by authenticated managers via `GET /api/v1/incidents/{id}/trace`.
 

@@ -155,6 +155,23 @@ async def test_typed_tool_registry_allowlist() -> None:
     registry = ToolRegistry()
     register_incident_tools(registry, repo)
 
+    # Incident creation is reserved for the internal workflow.
+    res_create_unauth = await registry.execute(
+        "create_incident",
+        {"description": "Broken lobby light", "location": "Main lobby"},
+        caller_role="PUBLIC",
+    )
+    assert not res_create_unauth.success
+    assert "INSUFFICIENT_TOOL_PERMISSIONS" in res_create_unauth.reason_codes
+
+    res_create = await registry.execute(
+        "create_incident",
+        {"description": "Broken lobby light", "location": "Main lobby"},
+        caller_role="SYSTEM",
+    )
+    assert res_create.success
+    assert res_create.data["reference_code"].startswith("BFA-")
+
     # Tool not allow-listed
     res_unknown = await registry.execute("execute_os_command", {"command": "ls"})
     assert not res_unknown.success

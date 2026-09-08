@@ -45,7 +45,7 @@ AGENT_METADATA: dict[str, dict[str, Any]] = {
         "default_model": "classifier_model",
         "output_schema_summary": (
             "intent (INCIDENT_REPORT | FACILITY_QA | STATUS_QUERY | FEEDBACK | OTHER), "
-            "confidence (0.0–1.0), reason_codes"
+            "tool_name (create_incident | null), confidence (0.0–1.0), reason_codes"
         ),
         "sample_input": {
             "text": (

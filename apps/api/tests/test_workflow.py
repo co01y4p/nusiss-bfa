@@ -50,7 +50,7 @@ def make_workflow(
 
 
 @pytest.mark.asyncio
-async def test_incident_graph_saves_first_and_applies_critical_policy() -> None:
+async def test_intent_router_calls_create_incident_before_downstream_agents() -> None:
     workflow, incidents, runs = make_workflow()
 
     state = await workflow.run(
@@ -59,7 +59,9 @@ async def test_incident_graph_saves_first_and_applies_critical_policy() -> None:
 
     nodes = [step.node for step in state.trace]
     assert state.outcome == "FINALIZED"
-    assert nodes.index("persist_incident") < nodes.index("extract")
+    assert nodes.index("create_incident") < nodes.index("extract")
+    intent_step = next(step for step in state.trace if step.node == "intent")
+    assert intent_step.output["tool_name"] == "create_incident"
     assert "notify_critical" in nodes
     assert state.incident_id is not None
     incident = incidents.get_by_id(state.incident_id)
@@ -67,6 +69,27 @@ async def test_incident_graph_saves_first_and_applies_critical_policy() -> None:
     assert incident.priority == "P1"
     assert incident.assigned_team == "LIFT_TEAM"
     assert len(runs.runs) == 1
+
+
+@pytest.mark.asyncio
+async def test_incident_report_without_create_tool_decision_reaches_human_review() -> None:
+    provider = FakeStructuredLLM(
+        {
+            "IntentOutput": {
+                "intent": "INCIDENT_REPORT",
+                "tool_name": None,
+                "confidence": 0.95,
+                "reason_codes": ["NEW_DEFECT"],
+            }
+        }
+    )
+    workflow, incidents, _ = make_workflow(provider)
+
+    state = await workflow.run(text="A water pipe is broken.", location="Level 2")
+
+    assert state.outcome == "HUMAN_REVIEW"
+    assert [step.node for step in state.trace] == ["security", "intent", "human_review"]
+    assert not incidents.items
 
 
 @pytest.mark.asyncio

@@ -3,7 +3,9 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.domain.incidents.models import IncidentCreate
 from app.repositories.interfaces.incidents import IncidentRepository
+from app.services.incident_service import IncidentService
 
 if TYPE_CHECKING:
     from app.tools.registry import ToolRegistry
@@ -13,6 +15,13 @@ class LookupIncidentInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     reference_code: str = Field(min_length=1, max_length=64)
+
+
+class CreateIncidentInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    description: str = Field(min_length=1, max_length=4000)
+    location: str = Field(min_length=1, max_length=200)
 
 
 class UpdateIncidentStatusInput(BaseModel):
@@ -32,6 +41,28 @@ class FindRecentIncidentsInput(BaseModel):
 
 
 def register_incident_tools(registry: "ToolRegistry", incident_repo: IncidentRepository) -> None:
+    def create_incident(args: CreateIncidentInput) -> dict[str, str]:
+        incident = IncidentService(incident_repo).create(
+            IncidentCreate(description=args.description, location=args.location)
+        )
+        return {
+            "id": incident.id,
+            "reference_code": incident.reference_code,
+            "status": (
+                incident.status.value
+                if hasattr(incident.status, "value")
+                else str(incident.status)
+            ),
+        }
+
+    registry.register(
+        name="create_incident",
+        description="Create and persist a new facility incident",
+        input_schema=CreateIncidentInput,
+        required_role="SYSTEM",
+        handler=create_incident,
+    )
+
     def lookup_incident(args: LookupIncidentInput) -> dict[str, str | None] | None:
         incident = incident_repo.get_by_reference(args.reference_code)
         if not incident:

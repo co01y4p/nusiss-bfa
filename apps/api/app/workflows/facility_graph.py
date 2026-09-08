@@ -7,20 +7,18 @@ from pydantic import BaseModel
 from app.agents.assignment import AssignmentAgent
 from app.agents.classification import ClassificationAgent
 from app.agents.extraction import ExtractionAgent
-from app.agents.intent import Intent, IntentAgent
+from app.agents.intent import Intent, IntentAgent, IntentTool
 from app.agents.priority import PriorityAgent
 from app.agents.response import ResponseAgent
 from app.agents.review import ReviewAgent
 from app.agents.security import SecurityAgent
 from app.core.config import Settings
-from app.domain.incidents.models import IncidentCreate
 from app.rag.citation_validator import CitationValidator
 from app.rag.retriever import KnowledgeRetriever
 from app.repositories.interfaces.incidents import IncidentRepository, WorkflowRunRepository
 from app.repositories.interfaces.security import SecurityEventRepository
 from app.security.output_policy import OutputPolicyValidator
 from app.security.prompt_injection import PromptInjectionDetector
-from app.services.incident_service import IncidentService
 from app.tools.registry import ToolRegistry
 from app.workflows.state import WorkflowState
 
@@ -167,7 +165,17 @@ class FacilityWorkflow:
         self._record_model_output(state, "intent", intent)
 
         if intent.intent == Intent.INCIDENT_REPORT:
-            await self._incident_path(state, payload)
+            if intent.tool_name == IntentTool.CREATE_INCIDENT:
+                await self._incident_path(state, payload)
+            else:
+                state.outcome = "HUMAN_REVIEW"
+                state.final_response = "A facility manager will review this request."
+                self._record(
+                    state,
+                    "human_review",
+                    {"intent": intent.intent.value, "tool_name": None},
+                    ["REQUIRED_TOOL_NOT_SELECTED", "MANUAL_TRIAGE"],
+                )
         elif intent.intent == Intent.FACILITY_QA:
             await self._faq_path(state, payload)
         elif intent.intent == Intent.STATUS_QUERY:
@@ -184,16 +192,62 @@ class FacilityWorkflow:
 
     async def _incident_path(self, state: WorkflowState, payload: dict[str, Any]) -> None:
         location = state.supplied_location.strip() if state.supplied_location else "Unspecified"
-        incident = IncidentService(self.incidents).create(
-            IncidentCreate(description=state.input_text, location=location)
+        if not self.tools or not self.tools.is_registered("create_incident"):
+            self._record(
+                state,
+                "create_incident",
+                {"success": False},
+                ["CREATE_INCIDENT_TOOL_UNAVAILABLE"],
+            )
+            state.outcome = "HUMAN_REVIEW"
+            state.final_response = "A facility manager will review this request."
+            self._record(
+                state,
+                "human_review",
+                {"intent": Intent.INCIDENT_REPORT.value},
+                ["INCIDENT_NOT_CREATED", "MANUAL_TRIAGE"],
+            )
+            return
+
+        self._check_bounds(state)
+        creation = await self.tools.execute(
+            "create_incident",
+            {"description": state.input_text, "location": location},
+            caller_role="SYSTEM",
         )
-        state.incident_id = incident.id
-        state.reference_code = incident.reference_code
+        created = creation.data if creation.success and isinstance(creation.data, dict) else None
+        incident_id = created.get("id") if created else None
+        reference_code = created.get("reference_code") if created else None
+        if not created or not isinstance(incident_id, str) or not isinstance(reference_code, str):
+            self._record(
+                state,
+                "create_incident",
+                {"success": False},
+                creation.reason_codes or ["CREATE_INCIDENT_TOOL_FAILED"],
+            )
+            state.outcome = "HUMAN_REVIEW"
+            state.final_response = "A facility manager will review this request."
+            self._record(
+                state,
+                "human_review",
+                {"intent": Intent.INCIDENT_REPORT.value},
+                ["INCIDENT_NOT_CREATED", "MANUAL_TRIAGE"],
+            )
+            return
+
+        created_status = created.get("status")
+        state.incident_id = incident_id
+        state.reference_code = reference_code
         self._record(
             state,
-            "persist_incident",
-            {"incident_id": incident.id, "reference_code": incident.reference_code},
-            ["SAVE_BEFORE_AI"],
+            "create_incident",
+            {
+                "success": True,
+                "incident_id": incident_id,
+                "reference_code": reference_code,
+                "status": created_status,
+            },
+            creation.reason_codes,
         )
 
         self._check_bounds(state, model_call=True)
@@ -205,7 +259,7 @@ class FacilityWorkflow:
             self._check_bounds(state)
             recent_lookup = await self.tools.execute(
                 "find_recent_incidents",
-                {"location": extraction.location, "exclude_incident_id": incident.id},
+                {"location": extraction.location, "exclude_incident_id": incident_id},
                 caller_role="SYSTEM",
             )
             if recent_lookup.success and recent_lookup.data:
@@ -262,7 +316,7 @@ class FacilityWorkflow:
         self._record_model_output(state, "assign", assignment)
 
         self.incidents.update_triage(
-            incident.id,
+            incident_id,
             location=extraction.location,
             category=classification.category.value,
             priority=priority.priority.value,
@@ -301,7 +355,7 @@ class FacilityWorkflow:
             ["APPROVED_CONTEXT_RETRIEVED"] if chunks_data else ["NO_APPROVED_CONTEXT"],
         )
         response_payload: dict[str, Any] = {
-            "reference_code": incident.reference_code,
+            "reference_code": reference_code,
             "priority": priority.priority.value,
             "assigned_team": assignment.team.value,
             "retrieval_chunks": chunks_data,
