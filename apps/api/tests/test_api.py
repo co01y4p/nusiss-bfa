@@ -131,7 +131,7 @@ def test_assistant_persists_triage_and_protects_trace(client: TestClient) -> Non
     )
     assert trace_response.status_code == 200
     nodes = [step["node"] for step in trace_response.json()["trace"]]
-    assert nodes[:3] == ["security", "intent", "create_incident"]
+    assert nodes[:4] == ["security", "intent", "create_incident", "intent_finalize"]
     assert "notify_critical" in nodes
     assert nodes[-1] == "finalize"
 

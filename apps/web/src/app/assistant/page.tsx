@@ -52,13 +52,19 @@ const NODE_METADATA: Record<string, NodeMeta> = {
     title: "Intent Router Agent",
     icon: "🎯",
     category: "router",
-    role: "Intent classification & dynamic supervisor graph routing",
+    role: "Intent classification, API function calling & graph routing",
+  },
+  intent_finalize: {
+    title: "Intent Router Agent (Final)",
+    icon: "🎯",
+    category: "router",
+    role: "Final structured intent after the function result is returned",
   },
   create_incident: {
     title: "Create Incident Tool",
     icon: "🛠️",
     category: "persistence",
-    role: "Tool call selected by the Intent Router Agent to persist a new incident",
+    role: "Registry-backed function call executed for the Intent Router Agent",
   },
   extract: {
     title: "Extraction Agent",
@@ -185,6 +191,12 @@ function asBoolean(val: unknown): boolean | undefined {
   return typeof val === "boolean" ? val : undefined;
 }
 
+function asRecord(val: unknown): Record<string, unknown> | undefined {
+  return val !== null && typeof val === "object" && !Array.isArray(val)
+    ? (val as Record<string, unknown>)
+    : undefined;
+}
+
 function getDecisionHighlight(step: TraceStep): {
   text: string;
   type: "safe" | "override" | "alert" | "neutral";
@@ -214,8 +226,19 @@ function getDecisionHighlight(step: TraceStep): {
   }
 
   if (node === "intent") {
+    const functionCall = asRecord(output.function_call);
+    if (functionCall) {
+      const name = asString(functionCall.name) || "unknown function";
+      return {
+        text: `🎯 Intent model call #1 requested ${name}. The exact model and tool payloads are available in the payload inspector.`,
+        type: "neutral",
+      };
+    }
+  }
+
+  if (node === "intent" || node === "intent_finalize") {
     const intent = asString(output.intent) || "UNKNOWN";
-    const selectedTool = asString(output.tool_name);
+    const incidentId = asString(output.incident_id);
     const conf = asNumber(output.confidence);
     const confidence =
       conf !== undefined ? ` (${Math.round(conf * 100)}% confidence)` : "";
@@ -227,9 +250,9 @@ function getDecisionHighlight(step: TraceStep): {
           : intent === "STATUS_QUERY"
             ? "Incident Status Lookup Workflow"
             : "Human Review Fallback Queue";
-    const toolDecision = selectedTool
-      ? ` Selected tool: ${selectedTool}.`
-      : " No tool selected.";
+    const toolDecision = incidentId
+      ? " create_incident completed through API Function Calling."
+      : " No function call completed.";
     return {
       text: `🎯 Intent classified as ${intent}${confidence} ➔ Routing to: ${route}.${toolDecision}`,
       type: "neutral",
@@ -246,7 +269,7 @@ function getDecisionHighlight(step: TraceStep): {
       };
     }
     return {
-      text: `🛠️ Tool call create_incident: Incident #${ref} persisted after selection by the Intent Router Agent.`,
+      text: `🛠️ Tool call create_incident: Incident #${ref} persisted through model-initiated API Function Calling.`,
       type: "safe",
     };
   }
@@ -434,6 +457,42 @@ function getHighlightedAttributes(
       value: labels && labels.length ? labels.join(", ") : "None (Clean)",
     });
   } else if (node === "intent") {
+    const functionCall = asRecord(output.function_call);
+    const payload = asRecord(output.payload);
+    if (functionCall) {
+      attrs.push({ label: "Model Call", value: "#1" });
+      attrs.push({
+        label: "Model Payload",
+        value: JSON.stringify(payload || {}),
+      });
+      attrs.push({
+        label: "Requested Function",
+        value: asString(functionCall.name) || "N/A",
+      });
+      attrs.push({
+        label: "Tool Payload",
+        value: JSON.stringify(asRecord(functionCall.arguments) || {}),
+      });
+      return attrs;
+    }
+    attrs.push({ label: "Model Call", value: "#1" });
+    attrs.push({
+      label: "Model Payload",
+      value: JSON.stringify(payload || {}),
+    });
+    attrs.push({
+      label: "Detected Intent",
+      value: asString(output.intent) || "N/A",
+    });
+    const conf = asNumber(output.confidence);
+    if (conf !== undefined) {
+      attrs.push({
+        label: "Confidence",
+        value: `${Math.round(conf * 100)}%`,
+      });
+    }
+  } else if (node === "intent_finalize") {
+    attrs.push({ label: "Model Call", value: "#2" });
     attrs.push({
       label: "Detected Intent",
       value: asString(output.intent) || "N/A",
@@ -446,8 +505,8 @@ function getHighlightedAttributes(
       });
     }
     attrs.push({
-      label: "Selected Tool",
-      value: asString(output.tool_name) || "None",
+      label: "Function Result",
+      value: asString(output.incident_id) || "No function call",
     });
   } else if (node === "create_incident") {
     attrs.push({

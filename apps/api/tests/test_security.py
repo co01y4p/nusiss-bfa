@@ -155,6 +155,12 @@ async def test_typed_tool_registry_allowlist() -> None:
     registry = ToolRegistry()
     register_incident_tools(registry, repo)
 
+    function_tools = registry.function_tools(caller_role="SYSTEM", names={"create_incident"})
+    assert [tool.name for tool in function_tools] == ["create_incident"]
+    assert function_tools[0].strict is True
+    assert function_tools[0].parameters["additionalProperties"] is False
+    assert set(function_tools[0].parameters["required"]) == {"description", "location"}
+
     # Incident creation is reserved for the internal workflow.
     res_create_unauth = await registry.execute(
         "create_incident",

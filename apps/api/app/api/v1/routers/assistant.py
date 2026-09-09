@@ -112,6 +112,7 @@ def build_workflow(db: Session, settings: Settings) -> FacilityWorkflow:
     )
     citation_validator = CitationValidator()
     incident_repository = SqlAlchemyIncidentRepository(db)
+    tools = build_tool_registry(incident_repository, retriever)
 
     return FacilityWorkflow(
         settings=settings,
@@ -127,6 +128,7 @@ def build_workflow(db: Session, settings: Settings) -> FacilityWorkflow:
             llm,
             model=settings.classifier_model,
             timeout_seconds=settings.agent_timeout_seconds,
+            tools=tools,
             system_prompt=prompt_repo.get_active_prompt("intent"),
         ),
         extraction=ExtractionAgent(
@@ -168,7 +170,7 @@ def build_workflow(db: Session, settings: Settings) -> FacilityWorkflow:
         retriever=retriever,
         citation_validator=citation_validator,
         security_events=PostgresSecurityEventRepository(db),
-        tools=build_tool_registry(incident_repository, retriever),
+        tools=tools,
     )
 
 

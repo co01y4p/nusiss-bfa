@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from app.agents.assignment import AssignmentAgent
 from app.agents.classification import ClassificationAgent
 from app.agents.extraction import ExtractionAgent
-from app.agents.intent import Intent, IntentAgent, IntentTool
+from app.agents.intent import Intent, IntentAgent
 from app.agents.priority import PriorityAgent
 from app.agents.response import ResponseAgent
 from app.agents.review import ReviewAgent
@@ -162,19 +162,74 @@ class FacilityWorkflow:
 
         self._check_bounds(state, model_call=True)
         intent = await self.intent.run(payload)
-        self._record_model_output(state, "intent", intent)
+        if intent.incident_id and intent.reference_code:
+            # Preserve linkage even if an additional model-call bound stops the run.
+            state.incident_id = intent.incident_id
+            state.reference_code = intent.reference_code
+        if self.intent.tool_calls:
+            for call in self.intent.tool_calls:
+                self._record(
+                    state,
+                    "intent",
+                    {
+                        "model_call": 1,
+                        "payload": call.model_input,
+                        "function_call": {
+                            "call_id": call.call_id,
+                            "name": call.name,
+                            "arguments": call.arguments,
+                        },
+                    },
+                    ["MODEL_FUNCTION_CALL_REQUESTED"],
+                )
+                tool_data = call.output.get("data")
+                self._record(
+                    state,
+                    call.name,
+                    {
+                        "success": call.output.get("success") is True,
+                        "incident_id": (
+                            tool_data.get("id") if isinstance(tool_data, dict) else None
+                        ),
+                        "reference_code": (
+                            tool_data.get("reference_code") if isinstance(tool_data, dict) else None
+                        ),
+                    },
+                    call.output.get("reason_codes", []),
+                )
+            self._record_model_output(state, "intent_finalize", intent)
+        else:
+            intent_output = intent.model_dump(mode="json")
+            reasons = intent_output.get("reason_codes", [])
+            self._record(
+                state,
+                "intent",
+                {
+                    "model_call": 1,
+                    "payload": self.intent.first_model_input,
+                    **intent_output,
+                },
+                reasons if isinstance(reasons, list) else [],
+            )
+        for _ in range(max(0, self.intent.model_calls - 1)):
+            self._check_bounds(state, model_call=True)
 
         if intent.intent == Intent.INCIDENT_REPORT:
-            if intent.tool_name == IntentTool.CREATE_INCIDENT:
-                await self._incident_path(state, payload)
+            if intent.incident_id and intent.reference_code:
+                await self._incident_path(
+                    state,
+                    payload,
+                    incident_id=intent.incident_id,
+                    reference_code=intent.reference_code,
+                )
             else:
                 state.outcome = "HUMAN_REVIEW"
                 state.final_response = "A facility manager will review this request."
                 self._record(
                     state,
                     "human_review",
-                    {"intent": intent.intent.value, "tool_name": None},
-                    ["REQUIRED_TOOL_NOT_SELECTED", "MANUAL_TRIAGE"],
+                    {"intent": intent.intent.value, "incident_id": None},
+                    ["CREATE_INCIDENT_NOT_CALLED", "MANUAL_TRIAGE"],
                 )
         elif intent.intent == Intent.FACILITY_QA:
             await self._faq_path(state, payload)
@@ -190,65 +245,16 @@ class FacilityWorkflow:
                 ["UNSUPPORTED_INTENT", "MANUAL_TRIAGE"],
             )
 
-    async def _incident_path(self, state: WorkflowState, payload: dict[str, Any]) -> None:
-        location = state.supplied_location.strip() if state.supplied_location else "Unspecified"
-        if not self.tools or not self.tools.is_registered("create_incident"):
-            self._record(
-                state,
-                "create_incident",
-                {"success": False},
-                ["CREATE_INCIDENT_TOOL_UNAVAILABLE"],
-            )
-            state.outcome = "HUMAN_REVIEW"
-            state.final_response = "A facility manager will review this request."
-            self._record(
-                state,
-                "human_review",
-                {"intent": Intent.INCIDENT_REPORT.value},
-                ["INCIDENT_NOT_CREATED", "MANUAL_TRIAGE"],
-            )
-            return
-
-        self._check_bounds(state)
-        creation = await self.tools.execute(
-            "create_incident",
-            {"description": state.input_text, "location": location},
-            caller_role="SYSTEM",
-        )
-        created = creation.data if creation.success and isinstance(creation.data, dict) else None
-        incident_id = created.get("id") if created else None
-        reference_code = created.get("reference_code") if created else None
-        if not created or not isinstance(incident_id, str) or not isinstance(reference_code, str):
-            self._record(
-                state,
-                "create_incident",
-                {"success": False},
-                creation.reason_codes or ["CREATE_INCIDENT_TOOL_FAILED"],
-            )
-            state.outcome = "HUMAN_REVIEW"
-            state.final_response = "A facility manager will review this request."
-            self._record(
-                state,
-                "human_review",
-                {"intent": Intent.INCIDENT_REPORT.value},
-                ["INCIDENT_NOT_CREATED", "MANUAL_TRIAGE"],
-            )
-            return
-
-        created_status = created.get("status")
+    async def _incident_path(
+        self,
+        state: WorkflowState,
+        payload: dict[str, Any],
+        *,
+        incident_id: str,
+        reference_code: str,
+    ) -> None:
         state.incident_id = incident_id
         state.reference_code = reference_code
-        self._record(
-            state,
-            "create_incident",
-            {
-                "success": True,
-                "incident_id": incident_id,
-                "reference_code": reference_code,
-                "status": created_status,
-            },
-            creation.reason_codes,
-        )
 
         self._check_bounds(state, model_call=True)
         extraction = await self.extraction.run(payload)

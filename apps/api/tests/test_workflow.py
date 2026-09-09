@@ -10,6 +10,7 @@ from app.agents.review import ReviewAgent
 from app.agents.security import SecurityAgent
 from app.core.config import Settings
 from app.llm.fake import FakeStructuredLLM
+from app.llm.gateway import FunctionCallRecord, ToolCallingError
 from app.tools.incident_tools import register_incident_tools
 from app.tools.registry import ToolRegistry
 from app.workflows.facility_graph import FacilityWorkflow
@@ -37,7 +38,7 @@ def make_workflow(
         incident_repository=incidents,
         workflow_repository=runs,
         security=SecurityAgent(**args),
-        intent=IntentAgent(**args),
+        intent=IntentAgent(**args, tools=tools),
         extraction=ExtractionAgent(**args),
         classification=ClassificationAgent(**args),
         priority=PriorityAgent(**args),
@@ -59,9 +60,18 @@ async def test_intent_router_calls_create_incident_before_downstream_agents() ->
 
     nodes = [step.node for step in state.trace]
     assert state.outcome == "FINALIZED"
+    assert nodes.index("intent") < nodes.index("create_incident")
     assert nodes.index("create_incident") < nodes.index("extract")
-    intent_step = next(step for step in state.trace if step.node == "intent")
-    assert intent_step.output["tool_name"] == "create_incident"
+    assert nodes.index("create_incident") < nodes.index("intent_finalize")
+    first_intent_step = next(step for step in state.trace if step.node == "intent")
+    assert first_intent_step.output["payload"] == {
+        "text": "There is a gas smell near the lift lobby.",
+        "location": "Block B level 2",
+    }
+    assert first_intent_step.output["function_call"]["name"] == "create_incident"
+    intent_step = next(step for step in state.trace if step.node == "intent_finalize")
+    assert intent_step.output["incident_id"] == state.incident_id
+    assert intent_step.output["reference_code"] == state.reference_code
     assert "notify_critical" in nodes
     assert state.incident_id is not None
     incident = incidents.get_by_id(state.incident_id)
@@ -77,9 +87,11 @@ async def test_incident_report_without_create_tool_decision_reaches_human_review
         {
             "IntentOutput": {
                 "intent": "INCIDENT_REPORT",
-                "tool_name": None,
+                "incident_id": None,
+                "reference_code": None,
                 "confidence": 0.95,
                 "reason_codes": ["NEW_DEFECT"],
+                "_call_tool": False,
             }
         }
     )
@@ -90,6 +102,48 @@ async def test_incident_report_without_create_tool_decision_reaches_human_review
     assert state.outcome == "HUMAN_REVIEW"
     assert [step.node for step in state.trace] == ["security", "intent", "human_review"]
     assert not incidents.items
+
+
+@pytest.mark.asyncio
+async def test_intent_preserves_created_incident_when_final_model_turn_fails() -> None:
+    class FailAfterToolLLM:
+        async def generate_with_tools(self, **kwargs):
+            tool_output = await kwargs["tool_executor"](
+                "create_incident",
+                {"description": "A pipe is broken.", "location": "Level 2"},
+            )
+            raise ToolCallingError(
+                "final response failed",
+                tool_calls=[
+                    FunctionCallRecord(
+                        call_id="call-1",
+                        name="create_incident",
+                        model_input={"text": "A pipe is broken.", "location": "Level 2"},
+                        arguments={
+                            "description": "A pipe is broken.",
+                            "location": "Level 2",
+                        },
+                        output=tool_output,
+                    )
+                ],
+            )
+
+    incidents = InMemoryIncidentRepository()
+    tools = ToolRegistry()
+    register_incident_tools(tools, incidents)
+    agent = IntentAgent(
+        FailAfterToolLLM(),  # type: ignore[arg-type]
+        model="fake",
+        timeout_seconds=1,
+        tools=tools,
+    )
+
+    output = await agent.run({"text": "A pipe is broken.", "location": "Level 2"})
+
+    assert output.intent.value == "INCIDENT_REPORT"
+    assert output.incident_id in incidents.items
+    assert output.reference_code is not None
+    assert output.reason_codes == ["TOOL_SUCCEEDED_FINAL_MODEL_OUTPUT_FAILED"]
 
 
 @pytest.mark.asyncio

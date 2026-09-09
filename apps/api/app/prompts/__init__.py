@@ -45,7 +45,7 @@ AGENT_METADATA: dict[str, dict[str, Any]] = {
         "default_model": "classifier_model",
         "output_schema_summary": (
             "intent (INCIDENT_REPORT | FACILITY_QA | STATUS_QUERY | FEEDBACK | OTHER), "
-            "tool_name (create_incident | null), confidence (0.0–1.0), reason_codes"
+            "incident_id, reference_code, confidence (0.0–1.0), reason_codes"
         ),
         "sample_input": {
             "text": (
@@ -140,7 +140,6 @@ AGENT_METADATA: dict[str, dict[str, Any]] = {
             "reply (markdown text), requires_followup (boolean), "
             "suggested_actions (list of strings)"
         ),
-
         "sample_input": {
             "text": "What should I do if the aircon is leaking?",
             "intent": "FACILITY_QA",
@@ -182,7 +181,6 @@ AGENT_METADATA: dict[str, dict[str, Any]] = {
         },
     },
 }
-
 
 
 def load_prompt(agent_name: str, version: str = "v1") -> str:

@@ -14,7 +14,7 @@ M5 through M8 remain planned work.
 - **M1 (Non-Agentic Baseline):** public incident creation and tracking, manager JWT authentication with Argon2id password
   hashes, a manager queue, controlled status transitions, and Alembic migrations.
 - **M2 (Multi-Agent Workflow):** a bounded multi-agent workflow with specialized strict-schema agents, deterministic routing,
-  intent-selected incident creation, deterministic critical-hazard priority, allow-listed assignment,
+  Responses API Function Calling backed by the typed Tool Registry, deterministic critical-hazard priority, allow-listed assignment,
   fault fallbacks, workflow limits, and a manager trace view.
 - **Multi-Agent Flow Logging & Observability (`/assistant` & `/manager`):** interactive execution logging and trace visualization for complete transparency across the multi-agent graph:
   - **Live Traversal Pipeline:** dynamic visual tracker showing active graph traversal through specialized agents and tools (`security`, `intent`, `create_incident`, `extract`, `recent_incident_lookup`, `classify`, `priority`, `assign`, `retrieval`, `response`, `status_lookup`, `status_response`, `review`, `quarantine`) with animated in-flight node progress.
@@ -37,7 +37,7 @@ M5 through M8 remain planned work.
   - **PII Redaction Engine:** automated scanning and redaction of Singapore NRIC/FIN, SSN, credit cards, emails, phone numbers, and secrets before payloads reach external LLM providers.
   - **Output Policy Validation:** post-generation safety checks verifying responses are free of prompt disclosures, XSS/HTML injections, unauthorized system actions, and unredacted PII.
   - **Typed Tool Allow-List (`ToolRegistry`):** strict schema validation and role-based access control (`PUBLIC` / `MANAGER` / `SYSTEM`) preventing arbitrary or unauthorized tool execution. The live workflow includes these active tools:
-    - `create_incident` (`SYSTEM`) is selected by the Intent Router Agent for `INCIDENT_REPORT` requests and persists the initial incident before downstream extraction, classification, and priority agents run.
+    - `create_incident` (`SYSTEM`) is exposed to the Intent Router Agent as a strict API function backed by the Tool Registry. For an `INCIDENT_REPORT`, the model calls it, receives the authoritative incident ID and reference code, and includes them in its structured output before downstream extraction, classification, and priority agents run.
     - `lookup_incident_status` (`PUBLIC`) resolves the `STATUS_QUERY` intent — an occupant asking about an existing reference code gets a grounded status update (`status_lookup` → `status_response` trace nodes) instead of falling through to manual review.
     - `find_recent_incidents` (`SYSTEM`) runs automatically on every `INCIDENT_REPORT`, searching recent reports near the same location and passing them as read-only reference context into the Classification and Priority agents (`recent_incident_lookup` trace node) — usable to disambiguate an unclear category or justify escalating a recurring pattern, never to downgrade a hazard.
   - **LLM Circuit Breaker:** state machine (`CLOSED`, `OPEN`, `HALF_OPEN`) preventing cascading provider failures by failing fast to manual triage after repeated upstream errors.

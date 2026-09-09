@@ -57,7 +57,10 @@ def register_incident_tools(registry: "ToolRegistry", incident_repo: IncidentRep
 
     registry.register(
         name="create_incident",
-        description="Create and persist a new facility incident",
+        description=(
+            "Create and persist a new facility incident. Call exactly once only after "
+            "classifying the current occupant message as INCIDENT_REPORT."
+        ),
         input_schema=CreateIncidentInput,
         required_role="SYSTEM",
         handler=create_incident,
