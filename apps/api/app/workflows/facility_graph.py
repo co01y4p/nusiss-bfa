@@ -84,14 +84,28 @@ class FacilityWorkflow:
         node: str,
         output: dict[str, Any],
         reason_codes: list[str],
+        *,
+        input: dict[str, Any] | None = None,
     ) -> None:
         self._check_bounds(state)
-        state.record(node, output, reason_codes)
+        state.record(node, output, reason_codes, input=input)
 
-    def _record_model_output(self, state: WorkflowState, node: str, output: BaseModel) -> None:
+    def _record_model_output(
+        self,
+        state: WorkflowState,
+        node: str,
+        input: dict[str, Any],
+        output: BaseModel,
+    ) -> None:
         data = output.model_dump(mode="json")
         reasons = data.get("reason_codes", [])
-        self._record(state, node, data, reasons if isinstance(reasons, list) else [])
+        self._record(
+            state,
+            node,
+            data,
+            reasons if isinstance(reasons, list) else [],
+            input=input,
+        )
 
     def _log_security_event(
         self,
@@ -141,7 +155,7 @@ class FacilityWorkflow:
 
         self._check_bounds(state, model_call=True)
         security = await self.security.run(payload)
-        self._record_model_output(state, "security", security)
+        self._record_model_output(state, "security", payload, security)
         if security.risk_score >= 0.8:
             state.outcome = "QUARANTINED"
             state.final_response = "This request was quarantined for manager review."
@@ -173,7 +187,6 @@ class FacilityWorkflow:
                     "intent",
                     {
                         "model_call": 1,
-                        "payload": call.model_input,
                         "function_call": {
                             "call_id": call.call_id,
                             "name": call.name,
@@ -181,6 +194,7 @@ class FacilityWorkflow:
                         },
                     },
                     ["MODEL_FUNCTION_CALL_REQUESTED"],
+                    input=call.model_input,
                 )
                 tool_data = call.output.get("data")
                 self._record(
@@ -197,7 +211,12 @@ class FacilityWorkflow:
                     },
                     call.output.get("reason_codes", []),
                 )
-            self._record_model_output(state, "intent_finalize", intent)
+            self._record_model_output(
+                state,
+                "intent_finalize",
+                self.intent.final_model_input or self.intent.first_model_input,
+                intent,
+            )
         else:
             intent_output = intent.model_dump(mode="json")
             reasons = intent_output.get("reason_codes", [])
@@ -206,10 +225,10 @@ class FacilityWorkflow:
                 "intent",
                 {
                     "model_call": 1,
-                    "payload": self.intent.first_model_input,
                     **intent_output,
                 },
                 reasons if isinstance(reasons, list) else [],
+                input=self.intent.first_model_input,
             )
         for _ in range(max(0, self.intent.model_calls - 1)):
             self._check_bounds(state, model_call=True)
@@ -258,7 +277,7 @@ class FacilityWorkflow:
 
         self._check_bounds(state, model_call=True)
         extraction = await self.extraction.run(payload)
-        self._record_model_output(state, "extract", extraction)
+        self._record_model_output(state, "extract", payload, extraction)
 
         recent_incidents: list[dict[str, Any]] = []
         if self.tools and self.tools.is_registered("find_recent_incidents"):
@@ -294,7 +313,7 @@ class FacilityWorkflow:
         }
         self._check_bounds(state, model_call=True)
         classification = await self.classification.run(classify_payload)
-        self._record_model_output(state, "classify", classification)
+        self._record_model_output(state, "classify", classify_payload, classification)
 
         priority_payload = {
             "text": state.input_text,
@@ -304,7 +323,7 @@ class FacilityWorkflow:
         }
         self._check_bounds(state, model_call=True)
         priority = await self.priority.decide(priority_payload)
-        self._record_model_output(state, "priority", priority)
+        self._record_model_output(state, "priority", priority_payload, priority)
         if priority.priority.value == "P1":
             self._record(
                 state,
@@ -319,7 +338,7 @@ class FacilityWorkflow:
         }
         self._check_bounds(state, model_call=True)
         assignment = await self.assignment.run(assignment_payload)
-        self._record_model_output(state, "assign", assignment)
+        self._record_model_output(state, "assign", assignment_payload, assignment)
 
         self.incidents.update_triage(
             incident_id,
@@ -368,7 +387,7 @@ class FacilityWorkflow:
         }
         self._check_bounds(state, model_call=True)
         response = await self.response.run(response_payload)
-        self._record_model_output(state, "incident_response", response)
+        self._record_model_output(state, "incident_response", response_payload, response)
         await self._review_and_finalize(
             state, response.message, response.citations, retrieved_chunks=safe_chunks
         )
@@ -422,8 +441,9 @@ class FacilityWorkflow:
             return
 
         self._check_bounds(state, model_call=True)
-        response = await self.response.run({**payload, "retrieval_chunks": chunks_data})
-        self._record_model_output(state, "faq_response", response)
+        response_payload = {**payload, "retrieval_chunks": chunks_data}
+        response = await self.response.run(response_payload)
+        self._record_model_output(state, "faq_response", response_payload, response)
 
         # Citation validation
         val_result = self.citation_validator.validate(
@@ -488,8 +508,9 @@ class FacilityWorkflow:
 
         state.reference_code = reference_code
         self._check_bounds(state, model_call=True)
-        response = await self.response.run({"status_lookup": lookup.data})
-        self._record_model_output(state, "status_response", response)
+        response_payload = {"status_lookup": lookup.data}
+        response = await self.response.run(response_payload)
+        self._record_model_output(state, "status_response", response_payload, response)
         await self._review_and_finalize(
             state, response.message, response.citations, response_type="STATUS_UPDATE"
         )
@@ -516,20 +537,19 @@ class FacilityWorkflow:
             )
 
         self._check_bounds(state, model_call=True)
-        review = await self.review.run(
-            {
-                "response_type": (
-                    response_type
-                    or ("INCIDENT_ACKNOWLEDGEMENT" if state.incident_id else "FACILITY_ANSWER")
-                ),
-                "message": message,
-                "citations": citations,
-                "reference_code": state.reference_code,
-                "validator_issues": (validator_issues or [])
-                + (output_policy.issues if not output_policy.is_valid else []),
-            }
-        )
-        self._record_model_output(state, "review", review)
+        review_payload = {
+            "response_type": (
+                response_type
+                or ("INCIDENT_ACKNOWLEDGEMENT" if state.incident_id else "FACILITY_ANSWER")
+            ),
+            "message": message,
+            "citations": citations,
+            "reference_code": state.reference_code,
+            "validator_issues": (validator_issues or [])
+            + (output_policy.issues if not output_policy.is_valid else []),
+        }
+        review = await self.review.run(review_payload)
+        self._record_model_output(state, "review", review_payload, review)
         if review.approved and not validator_issues and output_policy.is_valid:
             state.outcome = "FINALIZED"
             state.final_response = message

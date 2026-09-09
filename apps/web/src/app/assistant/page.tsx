@@ -8,6 +8,7 @@ import { apiRequest } from "@/lib/api";
 export type TraceStep = {
   sequence: number;
   node: string;
+  input?: Record<string, unknown> | null;
   output: Record<string, unknown>;
   reason_codes: string[];
 };
@@ -458,12 +459,11 @@ function getHighlightedAttributes(
     });
   } else if (node === "intent") {
     const functionCall = asRecord(output.function_call);
-    const payload = asRecord(output.payload);
     if (functionCall) {
       attrs.push({ label: "Model Call", value: "#1" });
       attrs.push({
         label: "Model Payload",
-        value: JSON.stringify(payload || {}),
+        value: JSON.stringify(step.input || {}),
       });
       attrs.push({
         label: "Requested Function",
@@ -478,7 +478,7 @@ function getHighlightedAttributes(
     attrs.push({ label: "Model Call", value: "#1" });
     attrs.push({
       label: "Model Payload",
-      value: JSON.stringify(payload || {}),
+      value: JSON.stringify(step.input || {}),
     });
     attrs.push({
       label: "Detected Intent",
@@ -1356,8 +1356,8 @@ export default function AssistantPage() {
                           <span>{isPayloadOpen ? "▼" : "▶"}</span>
                           <span>
                             {isPayloadOpen
-                              ? "Hide Raw Agent Payload"
-                              : "Inspect Agent Payload (Strict Schema JSON)"}
+                              ? "Hide Agent Input / Output"
+                              : "Inspect Agent Input / Output (JSON)"}
                           </span>
                         </button>
 
@@ -1367,13 +1367,23 @@ export default function AssistantPage() {
                               type="button"
                               className="copy-mini-btn"
                               onClick={() =>
-                                copyPayload(step.sequence, step.output)
+                                copyPayload(step.sequence, {
+                                  input: step.input ?? null,
+                                  output: step.output,
+                                })
                               }
                             >
                               {copiedStep === step.sequence
                                 ? "Copied!"
                                 : "Copy JSON"}
                             </button>
+                            {step.input && (
+                              <>
+                                <strong>Model Input</strong>
+                                <pre>{JSON.stringify(step.input, null, 2)}</pre>
+                              </>
+                            )}
+                            <strong>Model Output</strong>
                             <pre>{JSON.stringify(step.output, null, 2)}</pre>
                           </div>
                         )}

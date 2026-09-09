@@ -45,6 +45,7 @@ class IntentAgent(BaseAgent[IntentOutput]):
         self.model_calls = 1
         self.tool_calls: list[FunctionCallRecord] = []
         self.first_model_input: dict[str, Any] = {}
+        self.final_model_input: dict[str, Any] | None = None
 
     async def run(self, payload: dict[str, Any]) -> IntentOutput:
         registry = self.tools
@@ -81,6 +82,7 @@ class IntentAgent(BaseAgent[IntentOutput]):
                 self.model_calls = result.model_calls
                 self.tool_calls = result.tool_calls
                 self.first_model_input = result.first_model_input
+                self.final_model_input = self._build_final_model_input(result.tool_calls)
                 output = result.output
                 created = self._created_incident(result.tool_calls)
                 if created is not None:
@@ -98,6 +100,7 @@ class IntentAgent(BaseAgent[IntentOutput]):
             self.model_calls = 2
             self.tool_calls = exc.tool_calls
             self.first_model_input = exc.tool_calls[0].model_input if exc.tool_calls else payload
+            self.final_model_input = self._build_final_model_input(exc.tool_calls)
             created = self._created_incident(exc.tool_calls)
             if created is not None:
                 return IntentOutput(
@@ -112,7 +115,29 @@ class IntentAgent(BaseAgent[IntentOutput]):
             self.model_calls = 1
             self.tool_calls = []
             self.first_model_input = payload
+            self.final_model_input = None
             return self.fallback(payload, exc)
+
+    @staticmethod
+    def _build_final_model_input(
+        tool_calls: list[FunctionCallRecord],
+    ) -> dict[str, Any] | None:
+        if not tool_calls:
+            return None
+        return {
+            "original_input": tool_calls[0].model_input,
+            "function_calls": [
+                {
+                    "call_id": call.call_id,
+                    "name": call.name,
+                    "arguments": call.arguments,
+                }
+                for call in tool_calls
+            ],
+            "function_call_outputs": [
+                {"call_id": call.call_id, "output": call.output} for call in tool_calls
+            ],
+        }
 
     @staticmethod
     def _created_incident(tool_calls: list[FunctionCallRecord]) -> dict[str, str] | None:

@@ -64,12 +64,19 @@ async def test_intent_router_calls_create_incident_before_downstream_agents() ->
     assert nodes.index("create_incident") < nodes.index("extract")
     assert nodes.index("create_incident") < nodes.index("intent_finalize")
     first_intent_step = next(step for step in state.trace if step.node == "intent")
-    assert first_intent_step.output["payload"] == {
+    assert first_intent_step.input == {
         "text": "There is a gas smell near the lift lobby.",
         "location": "Block B level 2",
     }
+    assert "payload" not in first_intent_step.output
     assert first_intent_step.output["function_call"]["name"] == "create_incident"
     intent_step = next(step for step in state.trace if step.node == "intent_finalize")
+    assert intent_step.input is not None
+    assert intent_step.input["original_input"] == first_intent_step.input
+    assert intent_step.input["function_calls"][0]["name"] == "create_incident"
+    assert intent_step.input["function_call_outputs"][0]["call_id"] == (
+        first_intent_step.output["function_call"]["call_id"]
+    )
     assert intent_step.output["incident_id"] == state.incident_id
     assert intent_step.output["reference_code"] == state.reference_code
     assert "notify_critical" in nodes
@@ -78,6 +85,18 @@ async def test_intent_router_calls_create_incident_before_downstream_agents() ->
     assert incident is not None
     assert incident.priority == "P1"
     assert incident.assigned_team == "LIFT_TEAM"
+    model_nodes = {
+        "security",
+        "intent",
+        "intent_finalize",
+        "extract",
+        "classify",
+        "priority",
+        "assign",
+        "incident_response",
+        "review",
+    }
+    assert all(step.input is not None for step in state.trace if step.node in model_nodes)
     assert len(runs.runs) == 1
 
 

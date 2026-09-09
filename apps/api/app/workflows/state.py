@@ -8,6 +8,7 @@ from app.agents.base import StrictAgentModel
 class TraceStep(StrictAgentModel):
     sequence: int
     node: str
+    input: dict[str, Any] | None = None
     output: dict[str, Any]
     reason_codes: list[str] = Field(default_factory=list)
 
@@ -25,12 +26,20 @@ class WorkflowState(StrictAgentModel):
     final_response: str = ""
     trace: list[TraceStep] = Field(default_factory=list)
 
-    def record(self, node: str, output: dict[str, Any], reason_codes: list[str]) -> None:
+    def record(
+        self,
+        node: str,
+        output: dict[str, Any],
+        reason_codes: list[str],
+        *,
+        input: dict[str, Any] | None = None,
+    ) -> None:
         self.step_count += 1
         self.trace.append(
             TraceStep(
                 sequence=self.step_count,
                 node=node,
+                input=input,
                 output=output,
                 reason_codes=reason_codes,
             )
