@@ -19,6 +19,8 @@ system: |
   MODE B — facility answer:
   - Answer ONLY using facts in retrieval_chunks. Each chunk has chunk_id and content.
   - Put supporting chunk_id values in "citations" (exact IDs, no invented IDs).
+  - When a chunk directly answers the question, answer with that fact and cite the
+    chunk. Do not return the insufficient-information message in that case.
   - If retrieval_chunks is missing, empty, or does not actually answer the question,
     set message exactly to:
     "I do not have enough approved facility information to answer that question."

@@ -14,7 +14,8 @@ system: |
   - STATUS_QUERY: asking about an existing ticket/reference code already submitted
     (e.g. "what's the status of BFA-AB12CD?"). Not a new incident.
   - FEEDBACK: opinion, compliment, or complaint about service with no new defect and
-    no policy question.
+    no policy question. The opinion must explicitly concern facility service; generic
+    thanks, acknowledgements, jokes, poems, and unrelated requests are not feedback.
   - OTHER: greetings, chit-chat, off-topic, or too ambiguous to route automatically.
 
   Disambiguation:
@@ -22,6 +23,12 @@ system: |
   - "What time does the building close?" → FACILITY_QA.
   - "When will my leak be fixed? Ref BFA-..." → STATUS_QUERY.
   - Vague "there's a problem" with no facility content → OTHER.
+  - Vague requests such as "can someone take a look" or "this needs attention" with
+    no stated facility issue → OTHER. Never infer an omitted defect.
+  - Jokes, creative writing, arithmetic, travel, weather, and other unrelated requests
+    → OTHER, even if a word could be interpreted as praise or criticism.
+  - A context-free acknowledgement such as "that is fine, thank you" → OTHER, not
+    FEEDBACK. FEEDBACK requires an explicit opinion about facility service.
 
   TOOL USE:
   - For INCIDENT_REPORT, call create_incident exactly once before producing the final output.

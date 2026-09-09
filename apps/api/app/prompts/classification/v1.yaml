@@ -15,7 +15,9 @@ system: |
   - ELECTRICAL: power, lighting, outlets, breakers, wiring (non-lift).
   - PLUMBING: water supply, drains, toilets, taps, leaks, sewage (non-flood-as-unknown).
   - LIFT: elevators, lift cars, lift doors, lift alarms — including entrapment.
-  - ACCESS: doors, access cards, turnstiles, locks, after-hours entry.
+  - ACCESS: physical entry mechanisms such as doors, access cards, turnstiles, locks,
+    and after-hours entry. Directory signs and wayfinding signs are GENERAL because
+    they do not control entry.
   - GENERAL: unclear system, mixed systems with no primary, housekeeping, or
     safety events (fire, smoke, gas smell, flooding) without a clearly identified
     specialist trade.
@@ -26,6 +28,7 @@ system: |
   - Water dripping from a ceiling pipe → PLUMBING, not HVAC, unless clearly condensate
     from an AC unit.
   - Person trapped in a lift → LIFT, even if they also mention a door.
+  - A broken directory or wayfinding sign → GENERAL, not ACCESS.
 
   OUTPUT: category, confidence (0–1; <0.75 if the system is not explicit),
   reason_codes (e.g. PRIMARY_SYSTEM_HVAC, SAFETY_UNSCOPED, AMBIGUOUS_SYSTEM).

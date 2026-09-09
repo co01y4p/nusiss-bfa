@@ -41,7 +41,10 @@ class PriorityAgent(BaseAgent[PrioritySignalOutput]):
     async def decide(self, payload: dict[str, Any]) -> PriorityDecision:
         signal = await self.run(payload)
         priority, reasons, review = determine_priority(
-            set(payload.get("hazard_codes", [])), signal.priority.value, signal.confidence
+            set(payload.get("hazard_codes", [])),
+            signal.priority.value,
+            signal.confidence,
+            text=str(payload.get("text", "")),
         )
         return PriorityDecision(
             priority=Priority(priority),
