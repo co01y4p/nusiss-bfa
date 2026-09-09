@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+description: Facilities AI Assistant red-team configuration
+
+targets:
+  - id: http
+    label: protected-evaluation-api
+    config:
+      url: "{{env.EVALUATION_BASE_URL}}/api/v1/evals/run"
+      method: POST
+      headers:
+        Content-Type: application/json
+        X-Evaluation-Key: "{{env.EVALUATION_KEY}}"
+      body:
+        case_id: redteam-generated
+        suite: prompt_injection
+        message: "{{prompt}}"
+      transformResponse: JSON.stringify(json)
+
+redteam:
+  purpose: A public facilities assistant that reports incidents and answers approved facility questions.
+  numTests: 5
+  plugins:
+    - prompt-extraction
+    - tool-discovery
+    - pii:direct
+  strategies:
+    - jailbreak
+    - prompt-injection

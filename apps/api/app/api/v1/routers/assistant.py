@@ -16,9 +16,8 @@ from app.agents.review import ReviewAgent
 from app.agents.security import SecurityAgent
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
-from app.llm.fake import FakeStructuredLLM
+from app.llm.factory import build_structured_llm
 from app.llm.gateway import StructuredLLM
-from app.llm.providers.openai_compatible import OpenAICompatibleStructuredLLM
 from app.rag.citation_validator import CitationValidator
 from app.rag.embeddings import EmbeddingProvider, FakeEmbeddings, OpenAICompatibleEmbeddings
 from app.rag.retriever import KnowledgeRetriever
@@ -60,22 +59,7 @@ class TraceResponse(StrictAgentModel):
 
 
 def build_llm(settings: Settings) -> StructuredLLM:
-    if settings.llm_provider == "fake":
-        return FakeStructuredLLM()
-    if settings.llm_provider in {"openai", "openrouter", "gemini"}:
-        base_url = settings.llm_base_url
-        if settings.llm_provider == "gemini" and not base_url:
-            base_url = "https://generativelanguage.googleapis.com/v1beta/openai"
-        if not base_url or not settings.llm_api_key:
-            raise RuntimeError("External LLM provider is not configured")
-        return OpenAICompatibleStructuredLLM(
-            base_url=base_url,
-            api_key=settings.llm_api_key,
-            api_style="responses" if settings.llm_provider == "openai" else "chat_completions",
-            reasoning_effort=settings.llm_reasoning_effort,
-            max_output_tokens=settings.llm_max_output_tokens,
-        )
-    raise RuntimeError(f"Unsupported LLM provider: {settings.llm_provider}")
+    return build_structured_llm(settings)
 
 
 def build_embeddings(settings: Settings) -> EmbeddingProvider:

@@ -5,8 +5,8 @@ incidents without AI, track them through opaque reference codes, or use a struct
 classifies, prioritizes, and routes facility reports. Managers can review the incident queue and the
 full workflow trace.
 
-The implementation covers **M0, M1, M2, M3, and M4** from [the project plan](docs/plan/00-overview.md).
-M5 through M8 remain planned work.
+The implementation covers **M0, M1, M2, M3, M4, and M5** from [the project plan](docs/plan/00-overview.md).
+M6 through M8 remain planned work.
 
 ## Implemented
 
@@ -44,8 +44,13 @@ M5 through M8 remain planned work.
   - **Rate Limiting Middleware:** sliding-window rate limiter protecting public endpoints against abuse.
   - **Security Events Audit Trail:** `security_events` table and repository logging high-severity injection attempts, policy violations, and anomalous requests.
   - **File Ingestion Validation:** strict file extension, mime-type, and size boundaries preventing malicious file uploads.
-- **Fake LLM & Embeddings:** the default provider is deterministic and local. No external API key is
-  needed for development, tests, or the demo.
+- **M5 (Evaluation):** a protected, development/CI-only evaluation API and a 92-case Promptfoo suite running against the configured real LLM and measuring intent accuracy,
+  classification macro F1, critical-hazard recall, direct and indirect prompt-injection resistance, strict output schemas,
+  citation validity, and repeated-run consistency. Pull requests run the critical 22-case regression set, while pushes to
+  `master` and manual workflow runs execute the complete suite. Aggregate metric gates enforce 100% critical-hazard recall,
+  at least 95% prompt-injection resistance, and the documented quality targets under `evals/promptfoo/`.
+- **Fake LLM & Embeddings:** deterministic local test doubles are available for unit tests and
+  development. M5 quality evaluation rejects the fake LLM and requires real provider credentials.
 
 The earlier Cloudflare Workers + D1 M1 prototype remains under `apps/web-vanilla/` and can continue to
 serve as a lightweight deployed baseline. The milestone implementation lives under `apps/api/` and

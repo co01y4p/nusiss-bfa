@@ -1,9 +1,9 @@
 # Facilities AI Assistant API
 
-FastAPI backend for milestones M0 through M3. Includes bounded multi-agent workflow, pgvector-backed
-RAG knowledge base, heading-aware chunking, hybrid search, and citation validation. The application
-uses the OpenAI Responses API with `gpt-5-nano` by default. Deterministic fake providers remain
-available only for automated tests.
+FastAPI backend for milestones M0 through M5. Includes a bounded multi-agent workflow,
+pgvector-backed RAG, defense-in-depth agent security, and a protected evaluation API. The
+application uses the OpenAI Responses API with `gpt-5-nano` by default. Deterministic fake
+providers support automated unit tests, while the M5 evaluation harness requires a real LLM.
 
 ## Local setup
 
@@ -38,6 +38,7 @@ uvicorn app.main:app --reload --port 8000
 - `PATCH /api/v1/knowledge/documents/{id}/approval`
 - `DELETE /api/v1/knowledge/documents/{id}`
 - `POST /api/v1/knowledge/search`
+- `POST /api/v1/evals/run` (development/test/CI only; requires `X-Evaluation-Key`)
 
 - `GET /api/v1/prompts`
 - `GET /api/v1/prompts/{agent_name}`
