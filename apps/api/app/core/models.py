@@ -143,6 +143,36 @@ class KnowledgeChunkModel(Base):
     document: Mapped[KnowledgeDocumentModel] = relationship(back_populates="chunks")
 
 
+class FloorModel(Base):
+    __tablename__ = "floors"
+
+    id: Mapped[str] = mapped_column(uuid_type, primary_key=True, default=lambda: str(uuid.uuid4()))
+    name: Mapped[str] = mapped_column(String(120))
+    sort_order: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    facilities: Mapped[list["FacilityModel"]] = relationship(
+        back_populates="floor",
+        cascade="all, delete-orphan",
+        order_by="FacilityModel.sort_order",
+    )
+
+
+class FacilityModel(Base):
+    __tablename__ = "facilities"
+
+    id: Mapped[str] = mapped_column(uuid_type, primary_key=True, default=lambda: str(uuid.uuid4()))
+    floor_id: Mapped[str] = mapped_column(
+        uuid_type, ForeignKey("floors.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(120))
+    category: Mapped[str] = mapped_column(String(32), default="GENERAL")
+    sort_order: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    floor: Mapped[FloorModel] = relationship(back_populates="facilities")
+
+
 class SecurityEventModel(Base):
     __tablename__ = "security_events"
 

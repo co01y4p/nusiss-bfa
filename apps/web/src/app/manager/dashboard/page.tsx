@@ -39,7 +39,10 @@ export default function ManagerDashboardPage() {
       const message =
         caught instanceof Error ? caught.message : "Unable to load incidents";
       setError(message);
-      if (message.includes("token")) router.replace("/manager");
+      if (message.includes("token")) {
+        localStorage.removeItem("bfa_manager_token");
+        router.replace("/manager");
+      }
     }
   }, [router]);
 
@@ -74,6 +77,9 @@ export default function ManagerDashboardPage() {
     <section className="card">
       <div className="actions">
         <h1>Incident queue</h1>
+        <Link className="button-link button-secondary" href="/manager/building">
+          Building setup
+        </Link>
         <button onClick={signOut}>Sign out</button>
       </div>
       {error && <div className="notice error">{error}</div>}
