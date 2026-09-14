@@ -2,7 +2,13 @@ import re
 from collections.abc import Callable
 from typing import Any
 
-from app.llm.gateway import OutputT
+from app.llm.gateway import (
+    FunctionCallRecord,
+    FunctionTool,
+    OutputT,
+    ToolCallingResult,
+    ToolExecutor,
+)
 
 FakeHandler = Callable[[dict[str, Any]], dict[str, Any]]
 
@@ -35,6 +41,71 @@ class FakeStructuredLLM:
         else:
             data = self._default_response(schema_name, user_payload)
         return output_schema.model_validate(data)
+
+    async def generate_with_tools(
+        self,
+        *,
+        system_prompt: str,
+        user_payload: dict[str, Any],
+        output_schema: type[OutputT],
+        tools: list[FunctionTool],
+        tool_executor: ToolExecutor,
+        model: str,
+        temperature: float = 0.0,
+        timeout_seconds: float = 20.0,
+        max_tool_calls: int = 1,
+    ) -> ToolCallingResult[OutputT]:
+        del system_prompt, temperature, timeout_seconds, max_tool_calls
+        schema_name = output_schema.__name__
+        self.calls.append(
+            {
+                "schema": schema_name,
+                "model": model,
+                "payload": user_payload,
+                "tools": [tool.name for tool in tools],
+            }
+        )
+        handler = self.handlers.get(schema_name)
+        if callable(handler):
+            data = dict(handler(user_payload))
+        elif isinstance(handler, dict):
+            data = dict(handler)
+        else:
+            data = self._default_response(schema_name, user_payload)
+
+        should_call = bool(data.pop("_call_tool", data.get("intent") == "INCIDENT_REPORT"))
+        records: list[FunctionCallRecord] = []
+        if should_call and any(tool.name == "create_incident" for tool in tools):
+            arguments = {
+                "description": str(user_payload.get("text", "")),
+                "location": str(user_payload.get("location") or "Unspecified"),
+            }
+            tool_output = await tool_executor("create_incident", arguments)
+            records.append(
+                FunctionCallRecord(
+                    call_id="fake-call-create-incident",
+                    name="create_incident",
+                    model_input=user_payload,
+                    arguments=arguments,
+                    output=tool_output,
+                )
+            )
+            created = tool_output.get("data")
+            if tool_output.get("success") is True and isinstance(created, dict):
+                data["incident_id"] = created.get("id")
+                data["reference_code"] = created.get("reference_code")
+            else:
+                data["incident_id"] = None
+                data["reference_code"] = None
+        else:
+            data["incident_id"] = None
+            data["reference_code"] = None
+        return ToolCallingResult(
+            output=output_schema.model_validate(data),
+            tool_calls=records,
+            model_calls=2 if records else 1,
+            first_model_input=user_payload,
+        )
 
     def _default_response(self, schema_name: str, payload: dict[str, Any]) -> dict[str, Any]:
         text = str(payload.get("text", "")).lower()
@@ -77,7 +148,13 @@ class FakeStructuredLLM:
             else:
                 intent = "OTHER"
                 confidence = 0.55
-            return {"intent": intent, "confidence": confidence, "reason_codes": ["FAKE_RULE"]}
+            return {
+                "intent": intent,
+                "incident_id": None,
+                "reference_code": None,
+                "confidence": confidence,
+                "reason_codes": ["FAKE_RULE"],
+            }
         if schema_name == "ExtractionOutput":
             hazards: list[str] = []
             hazard_map = {
@@ -139,9 +216,16 @@ class FakeStructuredLLM:
                 "reason_codes": ["ALLOWLIST_MAP"],
             }
         if schema_name == "ResponseOutput":
+            status_lookup = payload.get("status_lookup")
             reference = payload.get("reference_code")
             chunks = payload.get("retrieval_chunks", [])
-            if reference:
+            if isinstance(status_lookup, dict) and status_lookup:
+                ref = status_lookup.get("reference_code", "")
+                incident_status = status_lookup.get("status", "UNKNOWN")
+                content = f"Incident {ref} is currently {incident_status}."
+                citations: list[str] = []
+                reasons = ["STATUS_REPORTED"]
+            elif reference:
                 content = f"Your report has been saved. Reference: {reference}."
                 citations = []
                 reasons = ["SAFE_TEMPLATE"]

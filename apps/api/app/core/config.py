@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     circuit_breaker_recovery_seconds: float = 30.0
     redact_pii_in_llm_prompts: bool = True
 
+    evaluation_enabled: bool = False
+    evaluation_key: str = ""
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [item.strip() for item in self.cors_origins.split(",") if item.strip()]

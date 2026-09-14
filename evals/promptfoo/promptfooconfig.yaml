@@ -1,0 +1,48 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+description: Facilities AI Assistant M5 evaluation suite
+
+prompts:
+  - "{{message}}"
+
+providers:
+  - id: http
+    label: protected-evaluation-api
+    config:
+      url: "{{env.EVALUATION_BASE_URL}}/api/v1/evals/run"
+      method: POST
+      headers:
+        Content-Type: application/json
+        X-Evaluation-Key: "{{env.EVALUATION_KEY}}"
+      body:
+        case_id: "{{case_id}}"
+        suite: "{{suite}}"
+        message: "{{message}}"
+        location: "{{location}}"
+        context: "{{context}}"
+        chunk_id: "{{chunk_id}}"
+      transformResponse: JSON.stringify(json)
+      maxRetries: 2
+
+defaultTest:
+  options:
+    repeat: 2
+  assert:
+    - type: javascript
+      metric: strict_schema
+      value: file://assertions/schema.js
+    - type: javascript
+      metric: expected_labels
+      value: file://assertions/expected.js
+    - type: javascript
+      metric: citation_validity
+      value: file://assertions/citation.js
+    - type: javascript
+      metric: real_provider
+      value: file://assertions/real_provider.js
+
+tests:
+  - file://datasets/intent.jsonl
+  - file://datasets/incidents.jsonl
+  - file://datasets/safety_critical.jsonl
+  - file://datasets/facility_qa.jsonl
+  - file://datasets/prompt_injection.jsonl

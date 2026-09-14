@@ -7,6 +7,7 @@ on:
       - "apps/api/**"
       - "apps/web/**"
       - "infra/**"
+      - "evals/**"
       - ".github/workflows/ci.yml"
   pull_request:
     branches: [master]
@@ -14,6 +15,7 @@ on:
       - "apps/api/**"
       - "apps/web/**"
       - "infra/**"
+      - "evals/**"
       - ".github/workflows/ci.yml"
   workflow_dispatch: {}
 
@@ -55,3 +57,67 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm build
+
+  evaluations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: evals/promptfoo/pnpm-lock.yaml
+      - run: pip install -e apps/api
+      - run: pnpm --dir evals/promptfoo install --frozen-lockfile
+      - name: Start protected evaluation API
+        env:
+          APP_ENV: ci
+          DATABASE_URL: sqlite:///./m5-ci.db
+          EVALUATION_ENABLED: "true"
+          EVALUATION_KEY: ci-evaluation-key
+          LLM_PROVIDER: openai
+          LLM_BASE_URL: https://api.openai.com/v1
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          CLASSIFIER_MODEL: gpt-5-nano
+          GENERATOR_MODEL: gpt-5-nano
+        run: |
+          python -m uvicorn app.main:app --app-dir apps/api --host 127.0.0.1 --port 8000 > /tmp/m5-api.log 2>&1 &
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8000/api/v1/health/live > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/m5-api.log
+          exit 1
+      - name: Run critical regression suite
+        if: github.event_name == 'pull_request'
+        env:
+          EVALUATION_KEY: ci-evaluation-key
+          EVALUATION_BASE_URL: http://127.0.0.1:8000
+          PROMPTFOO_DISABLE_TELEMETRY: "true"
+        run: |
+          pnpm --dir evals/promptfoo eval:critical
+          pnpm --dir evals/promptfoo metrics:critical
+      - name: Run full release regression suite
+        if: github.event_name != 'pull_request'
+        env:
+          EVALUATION_KEY: ci-evaluation-key
+          EVALUATION_BASE_URL: http://127.0.0.1:8000
+          PROMPTFOO_DISABLE_TELEMETRY: "true"
+        run: |
+          pnpm --dir evals/promptfoo eval:full
+          pnpm --dir evals/promptfoo metrics:full
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: m5-evaluation-results
+          path: evals/promptfoo/results-*.json
+          if-no-files-found: ignore

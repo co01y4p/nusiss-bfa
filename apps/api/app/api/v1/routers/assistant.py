@@ -16,9 +16,8 @@ from app.agents.review import ReviewAgent
 from app.agents.security import SecurityAgent
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
-from app.llm.fake import FakeStructuredLLM
+from app.llm.factory import build_structured_llm
 from app.llm.gateway import StructuredLLM
-from app.llm.providers.openai_compatible import OpenAICompatibleStructuredLLM
 from app.rag.citation_validator import CitationValidator
 from app.rag.embeddings import EmbeddingProvider, FakeEmbeddings, OpenAICompatibleEmbeddings
 from app.rag.retriever import KnowledgeRetriever
@@ -27,9 +26,12 @@ from app.repositories.postgres.incidents import (
     SqlAlchemyWorkflowRunRepository,
 )
 from app.repositories.postgres.knowledge import SqlAlchemyKnowledgeRepository
+from app.repositories.postgres.prompts import SqlAlchemyPromptRepository
 from app.repositories.postgres.security_events import PostgresSecurityEventRepository
 from app.security.authentication import CurrentUser, require_manager
+from app.tools import ToolRegistry, register_incident_tools, register_knowledge_tools
 from app.workflows.facility_graph import FacilityWorkflow
+from app.workflows.state import TraceStep
 
 router = APIRouter(tags=["assistant"])
 
@@ -37,12 +39,14 @@ router = APIRouter(tags=["assistant"])
 class AssistantRequest(StrictAgentModel):
     message: str = Field(min_length=1, max_length=8000)
     location: str | None = Field(default=None, max_length=200)
+    include_trace: bool = Field(default=False)
 
 
 class AssistantResponse(StrictAgentModel):
     outcome: str
     message: str
     reference_code: str | None
+    trace: list[TraceStep] | None = Field(default=None)
 
 
 class TraceResponse(StrictAgentModel):
@@ -55,22 +59,7 @@ class TraceResponse(StrictAgentModel):
 
 
 def build_llm(settings: Settings) -> StructuredLLM:
-    if settings.llm_provider == "fake":
-        return FakeStructuredLLM()
-    if settings.llm_provider in {"openai", "openrouter", "gemini"}:
-        base_url = settings.llm_base_url
-        if settings.llm_provider == "gemini" and not base_url:
-            base_url = "https://generativelanguage.googleapis.com/v1beta/openai"
-        if not base_url or not settings.llm_api_key:
-            raise RuntimeError("External LLM provider is not configured")
-        return OpenAICompatibleStructuredLLM(
-            base_url=base_url,
-            api_key=settings.llm_api_key,
-            api_style="responses" if settings.llm_provider == "openai" else "chat_completions",
-            reasoning_effort=settings.llm_reasoning_effort,
-            max_output_tokens=settings.llm_max_output_tokens,
-        )
-    raise RuntimeError(f"Unsupported LLM provider: {settings.llm_provider}")
+    return build_structured_llm(settings)
 
 
 def build_embeddings(settings: Settings) -> EmbeddingProvider:
@@ -84,10 +73,21 @@ def build_embeddings(settings: Settings) -> EmbeddingProvider:
     return FakeEmbeddings(dim=settings.embedding_dim)
 
 
+def build_tool_registry(
+    incident_repo: SqlAlchemyIncidentRepository, retriever: KnowledgeRetriever
+) -> ToolRegistry:
+    registry = ToolRegistry()
+    register_incident_tools(registry, incident_repo)
+    register_knowledge_tools(registry, retriever)
+    return registry
+
+
 def build_workflow(db: Session, settings: Settings) -> FacilityWorkflow:
+
     llm = build_llm(settings)
     embeddings = build_embeddings(settings)
     knowledge_repo = SqlAlchemyKnowledgeRepository(db)
+    prompt_repo = SqlAlchemyPromptRepository(db)
     retriever = KnowledgeRetriever(
         repository=knowledge_repo,
         embeddings=embeddings,
@@ -95,56 +95,74 @@ def build_workflow(db: Session, settings: Settings) -> FacilityWorkflow:
         default_similarity_threshold=settings.rag_similarity_threshold,
     )
     citation_validator = CitationValidator()
+    incident_repository = SqlAlchemyIncidentRepository(db)
+    tools = build_tool_registry(incident_repository, retriever)
 
     return FacilityWorkflow(
         settings=settings,
-        incident_repository=SqlAlchemyIncidentRepository(db),
+        incident_repository=incident_repository,
         workflow_repository=SqlAlchemyWorkflowRunRepository(db),
         security=SecurityAgent(
             llm,
             model=settings.classifier_model,
             timeout_seconds=settings.agent_timeout_seconds,
+            system_prompt=prompt_repo.get_active_prompt("security"),
         ),
         intent=IntentAgent(
             llm,
             model=settings.classifier_model,
             timeout_seconds=settings.agent_timeout_seconds,
+            tools=tools,
+            system_prompt=prompt_repo.get_active_prompt("intent"),
         ),
         extraction=ExtractionAgent(
             llm,
             model=settings.classifier_model,
             timeout_seconds=settings.agent_timeout_seconds,
+            system_prompt=prompt_repo.get_active_prompt("extraction"),
         ),
         classification=ClassificationAgent(
             llm,
             model=settings.classifier_model,
             timeout_seconds=settings.agent_timeout_seconds,
+            system_prompt=prompt_repo.get_active_prompt("classification"),
         ),
         priority=PriorityAgent(
             llm,
             model=settings.classifier_model,
             timeout_seconds=settings.agent_timeout_seconds,
+            system_prompt=prompt_repo.get_active_prompt("priority"),
         ),
         assignment=AssignmentAgent(
             llm,
             model=settings.classifier_model,
             timeout_seconds=settings.agent_timeout_seconds,
+            system_prompt=prompt_repo.get_active_prompt("assignment"),
         ),
         response=ResponseAgent(
-            llm, model=settings.generator_model, timeout_seconds=settings.agent_timeout_seconds
+            llm,
+            model=settings.generator_model,
+            timeout_seconds=settings.agent_timeout_seconds,
+            system_prompt=prompt_repo.get_active_prompt("response"),
         ),
         review=ReviewAgent(
             llm,
             model=settings.classifier_model,
             timeout_seconds=settings.agent_timeout_seconds,
+            system_prompt=prompt_repo.get_active_prompt("review"),
         ),
         retriever=retriever,
         citation_validator=citation_validator,
         security_events=PostgresSecurityEventRepository(db),
+        tools=tools,
     )
 
 
-@router.post("/assistant/messages", response_model=AssistantResponse)
+@router.post(
+    "/assistant/messages",
+    response_model=AssistantResponse,
+    response_model_exclude_none=True,
+)
 async def submit_message(
     body: AssistantRequest,
     db: Annotated[Session, Depends(get_db)],
@@ -165,6 +183,7 @@ async def submit_message(
         outcome=state.outcome,
         message=state.final_response,
         reference_code=state.reference_code,
+        trace=state.trace if body.include_trace else None,
     )
 
 

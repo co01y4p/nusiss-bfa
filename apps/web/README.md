@@ -1,6 +1,6 @@
 # Facilities AI Assistant Web
 
-Next.js frontend for M1 incident reporting, M2 multi-agent assistant & manager queue, and M3 RAG knowledge base studio.
+Next.js frontend for M1 incident reporting, M2 multi-agent assistant (with interactive agent execution flow logging & trace visualization), manager incident queue & trace auditor, M3 RAG knowledge base studio, and agent prompt governance studio.
 
 ```bash
 pnpm install

@@ -30,6 +30,10 @@ def _reference_code() -> str:
     return "BFA-" + "".join(secrets.choice(alphabet) for _ in range(10))
 
 
+def _escape_like(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 class SqlAlchemyIncidentRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
@@ -70,6 +74,26 @@ class SqlAlchemyIncidentRepository:
             .limit(limit)
             .offset(offset)
         ).all()
+        return [_to_domain(row) for row in rows]
+
+    def find_similar(
+        self,
+        *,
+        location: str,
+        since: datetime,
+        exclude_id: str | None = None,
+        limit: int = 5,
+    ) -> list[Incident]:
+        stmt = (
+            select(IncidentModel)
+            .where(IncidentModel.location.ilike(f"%{_escape_like(location)}%", escape="\\"))
+            .where(IncidentModel.created_at >= since)
+            .order_by(IncidentModel.created_at.desc())
+            .limit(limit)
+        )
+        if exclude_id is not None:
+            stmt = stmt.where(IncidentModel.id != exclude_id)
+        rows = self.session.scalars(stmt).all()
         return [_to_domain(row) for row in rows]
 
     def update_status(self, incident_id: str, status: str) -> Incident | None:

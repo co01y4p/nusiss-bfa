@@ -1,4 +1,5 @@
 import asyncio
+import re
 from typing import Any, Protocol
 
 from pydantic import BaseModel
@@ -12,14 +13,13 @@ from app.agents.response import ResponseAgent
 from app.agents.review import ReviewAgent
 from app.agents.security import SecurityAgent
 from app.core.config import Settings
-from app.domain.incidents.models import IncidentCreate
 from app.rag.citation_validator import CitationValidator
 from app.rag.retriever import KnowledgeRetriever
 from app.repositories.interfaces.incidents import IncidentRepository, WorkflowRunRepository
 from app.repositories.interfaces.security import SecurityEventRepository
 from app.security.output_policy import OutputPolicyValidator
 from app.security.prompt_injection import PromptInjectionDetector
-from app.services.incident_service import IncidentService
+from app.tools.registry import ToolRegistry
 from app.workflows.state import WorkflowState
 
 
@@ -50,6 +50,7 @@ class FacilityWorkflow:
         citation_validator: CitationValidator | None = None,
         security_events: SecurityEventRepository | None = None,
         output_validator: OutputPolicyValidator | None = None,
+        tools: ToolRegistry | None = None,
     ) -> None:
         self.settings = settings
         self.incidents = incident_repository
@@ -67,6 +68,7 @@ class FacilityWorkflow:
         self.security_events = security_events
         self.output_validator = output_validator or OutputPolicyValidator()
         self.injection_detector = PromptInjectionDetector()
+        self.tools = tools
 
     def _check_bounds(self, state: WorkflowState, *, model_call: bool = False) -> None:
         if state.step_count >= self.settings.max_agent_steps:
@@ -82,14 +84,28 @@ class FacilityWorkflow:
         node: str,
         output: dict[str, Any],
         reason_codes: list[str],
+        *,
+        input: dict[str, Any] | None = None,
     ) -> None:
         self._check_bounds(state)
-        state.record(node, output, reason_codes)
+        state.record(node, output, reason_codes, input=input)
 
-    def _record_model_output(self, state: WorkflowState, node: str, output: BaseModel) -> None:
+    def _record_model_output(
+        self,
+        state: WorkflowState,
+        node: str,
+        input: dict[str, Any],
+        output: BaseModel,
+    ) -> None:
         data = output.model_dump(mode="json")
         reasons = data.get("reason_codes", [])
-        self._record(state, node, data, reasons if isinstance(reasons, list) else [])
+        self._record(
+            state,
+            node,
+            data,
+            reasons if isinstance(reasons, list) else [],
+            input=input,
+        )
 
     def _log_security_event(
         self,
@@ -139,7 +155,7 @@ class FacilityWorkflow:
 
         self._check_bounds(state, model_call=True)
         security = await self.security.run(payload)
-        self._record_model_output(state, "security", security)
+        self._record_model_output(state, "security", payload, security)
         if security.risk_score >= 0.8:
             state.outcome = "QUARANTINED"
             state.final_response = "This request was quarantined for manager review."
@@ -160,12 +176,84 @@ class FacilityWorkflow:
 
         self._check_bounds(state, model_call=True)
         intent = await self.intent.run(payload)
-        self._record_model_output(state, "intent", intent)
+        if intent.incident_id and intent.reference_code:
+            # Preserve linkage even if an additional model-call bound stops the run.
+            state.incident_id = intent.incident_id
+            state.reference_code = intent.reference_code
+        if self.intent.tool_calls:
+            for call in self.intent.tool_calls:
+                self._record(
+                    state,
+                    "intent",
+                    {
+                        "model_call": 1,
+                        "function_call": {
+                            "call_id": call.call_id,
+                            "name": call.name,
+                            "arguments": call.arguments,
+                        },
+                    },
+                    ["MODEL_FUNCTION_CALL_REQUESTED"],
+                    input=call.model_input,
+                )
+                tool_data = call.output.get("data")
+                self._record(
+                    state,
+                    call.name,
+                    {
+                        "success": call.output.get("success") is True,
+                        "incident_id": (
+                            tool_data.get("id") if isinstance(tool_data, dict) else None
+                        ),
+                        "reference_code": (
+                            tool_data.get("reference_code") if isinstance(tool_data, dict) else None
+                        ),
+                    },
+                    call.output.get("reason_codes", []),
+                )
+            self._record_model_output(
+                state,
+                "intent_finalize",
+                self.intent.final_model_input or self.intent.first_model_input,
+                intent,
+            )
+        else:
+            intent_output = intent.model_dump(mode="json")
+            reasons = intent_output.get("reason_codes", [])
+            self._record(
+                state,
+                "intent",
+                {
+                    "model_call": 1,
+                    **intent_output,
+                },
+                reasons if isinstance(reasons, list) else [],
+                input=self.intent.first_model_input,
+            )
+        for _ in range(max(0, self.intent.model_calls - 1)):
+            self._check_bounds(state, model_call=True)
 
         if intent.intent == Intent.INCIDENT_REPORT:
-            await self._incident_path(state, payload)
+            if intent.incident_id and intent.reference_code:
+                await self._incident_path(
+                    state,
+                    payload,
+                    incident_id=intent.incident_id,
+                    reference_code=intent.reference_code,
+                )
+            else:
+                state.outcome = "HUMAN_REVIEW"
+                state.final_response = "A facility manager will review this request."
+                self._record(
+                    state,
+                    "human_review",
+                    {"intent": intent.intent.value, "incident_id": None},
+                    ["CREATE_INCIDENT_NOT_CALLED", "MANUAL_TRIAGE"],
+                )
         elif intent.intent == Intent.FACILITY_QA:
             await self._faq_path(state, payload)
+        elif intent.intent == Intent.STATUS_QUERY:
+            await self._status_query_path(state)
         else:
             state.outcome = "HUMAN_REVIEW"
             state.final_response = "A facility manager will review this request."
@@ -176,37 +264,66 @@ class FacilityWorkflow:
                 ["UNSUPPORTED_INTENT", "MANUAL_TRIAGE"],
             )
 
-    async def _incident_path(self, state: WorkflowState, payload: dict[str, Any]) -> None:
-        location = state.supplied_location.strip() if state.supplied_location else "Unspecified"
-        incident = IncidentService(self.incidents).create(
-            IncidentCreate(description=state.input_text, location=location)
-        )
-        state.incident_id = incident.id
-        state.reference_code = incident.reference_code
-        self._record(
-            state,
-            "persist_incident",
-            {"incident_id": incident.id, "reference_code": incident.reference_code},
-            ["SAVE_BEFORE_AI"],
-        )
+    async def _incident_path(
+        self,
+        state: WorkflowState,
+        payload: dict[str, Any],
+        *,
+        incident_id: str,
+        reference_code: str,
+    ) -> None:
+        state.incident_id = incident_id
+        state.reference_code = reference_code
 
         self._check_bounds(state, model_call=True)
         extraction = await self.extraction.run(payload)
-        self._record_model_output(state, "extract", extraction)
+        self._record_model_output(state, "extract", payload, extraction)
 
-        classify_payload = {"text": state.input_text, "summary": extraction.summary}
+        recent_incidents: list[dict[str, Any]] = []
+        if self.tools and self.tools.is_registered("find_recent_incidents"):
+            self._check_bounds(state)
+            recent_lookup = await self.tools.execute(
+                "find_recent_incidents",
+                {"location": extraction.location, "exclude_incident_id": incident_id},
+                caller_role="SYSTEM",
+            )
+            if recent_lookup.success and recent_lookup.data:
+                recent_incidents = recent_lookup.data
+            # Trace is exposed to the (unauthenticated) caller via include_trace; never
+            # echo other occupants' reference codes here, only an aggregate summary.
+            self._record(
+                state,
+                "recent_incident_lookup",
+                {
+                    "count": len(recent_incidents),
+                    "categories": sorted(
+                        {m["category"] for m in recent_incidents if m.get("category")}
+                    ),
+                    "priorities": sorted(
+                        {m["priority"] for m in recent_incidents if m.get("priority")}
+                    ),
+                },
+                ["RECENT_INCIDENT_CONTEXT"] if recent_incidents else ["NO_RECENT_MATCHES"],
+            )
+
+        classify_payload = {
+            "text": state.input_text,
+            "summary": extraction.summary,
+            "recent_similar_incidents": recent_incidents,
+        }
         self._check_bounds(state, model_call=True)
         classification = await self.classification.run(classify_payload)
-        self._record_model_output(state, "classify", classification)
+        self._record_model_output(state, "classify", classify_payload, classification)
 
         priority_payload = {
             "text": state.input_text,
             "hazard_codes": [code.value for code in extraction.hazard_codes],
             "category": classification.category.value,
+            "recent_similar_incidents": recent_incidents,
         }
         self._check_bounds(state, model_call=True)
         priority = await self.priority.decide(priority_payload)
-        self._record_model_output(state, "priority", priority)
+        self._record_model_output(state, "priority", priority_payload, priority)
         if priority.priority.value == "P1":
             self._record(
                 state,
@@ -221,10 +338,10 @@ class FacilityWorkflow:
         }
         self._check_bounds(state, model_call=True)
         assignment = await self.assignment.run(assignment_payload)
-        self._record_model_output(state, "assign", assignment)
+        self._record_model_output(state, "assign", assignment_payload, assignment)
 
         self.incidents.update_triage(
-            incident.id,
+            incident_id,
             location=extraction.location,
             category=classification.category.value,
             priority=priority.priority.value,
@@ -263,14 +380,14 @@ class FacilityWorkflow:
             ["APPROVED_CONTEXT_RETRIEVED"] if chunks_data else ["NO_APPROVED_CONTEXT"],
         )
         response_payload: dict[str, Any] = {
-            "reference_code": incident.reference_code,
+            "reference_code": reference_code,
             "priority": priority.priority.value,
             "assigned_team": assignment.team.value,
             "retrieval_chunks": chunks_data,
         }
         self._check_bounds(state, model_call=True)
         response = await self.response.run(response_payload)
-        self._record_model_output(state, "incident_response", response)
+        self._record_model_output(state, "incident_response", response_payload, response)
         await self._review_and_finalize(
             state, response.message, response.citations, retrieved_chunks=safe_chunks
         )
@@ -324,8 +441,9 @@ class FacilityWorkflow:
             return
 
         self._check_bounds(state, model_call=True)
-        response = await self.response.run({**payload, "retrieval_chunks": chunks_data})
-        self._record_model_output(state, "faq_response", response)
+        response_payload = {**payload, "retrieval_chunks": chunks_data}
+        response = await self.response.run(response_payload)
+        self._record_model_output(state, "faq_response", response_payload, response)
 
         # Citation validation
         val_result = self.citation_validator.validate(
@@ -353,6 +471,50 @@ class FacilityWorkflow:
             validator_issues=val_result.issues if not val_result.is_valid else None,
         )
 
+    async def _status_query_path(self, state: WorkflowState) -> None:
+        match = re.search(r"\bBFA-[A-Z0-9]{6,12}\b", state.input_text.upper())
+        if not self.tools or not self.tools.is_registered("lookup_incident_status") or not match:
+            state.outcome = "HUMAN_REVIEW"
+            state.final_response = "A facility manager will review this request."
+            self._record(
+                state,
+                "human_review",
+                {"reference_code_found": bool(match)},
+                ["STATUS_QUERY_UNRESOLVED", "MANUAL_TRIAGE"],
+            )
+            return
+
+        reference_code = match.group(0)
+        lookup = await self.tools.execute(
+            "lookup_incident_status", {"reference_code": reference_code}, caller_role="PUBLIC"
+        )
+        found = bool(lookup.success and lookup.data)
+        self._record(
+            state,
+            "status_lookup",
+            {"reference_code": reference_code, "found": found},
+            lookup.reason_codes,
+        )
+        if not found:
+            state.outcome = "HUMAN_REVIEW"
+            state.final_response = "A facility manager will review this request."
+            self._record(
+                state,
+                "human_review",
+                {"reference_code": reference_code},
+                ["REFERENCE_CODE_NOT_FOUND", "MANUAL_TRIAGE"],
+            )
+            return
+
+        state.reference_code = reference_code
+        self._check_bounds(state, model_call=True)
+        response_payload = {"status_lookup": lookup.data}
+        response = await self.response.run(response_payload)
+        self._record_model_output(state, "status_response", response_payload, response)
+        await self._review_and_finalize(
+            state, response.message, response.citations, response_type="STATUS_UPDATE"
+        )
+
     async def _review_and_finalize(
         self,
         state: WorkflowState,
@@ -360,6 +522,7 @@ class FacilityWorkflow:
         citations: list[str],
         retrieved_chunks: list[Any] | None = None,
         validator_issues: list[str] | None = None,
+        response_type: str | None = None,
     ) -> None:
         del retrieved_chunks
         # Output policy check
@@ -374,19 +537,19 @@ class FacilityWorkflow:
             )
 
         self._check_bounds(state, model_call=True)
-        review = await self.review.run(
-            {
-                "response_type": (
-                    "INCIDENT_ACKNOWLEDGEMENT" if state.incident_id else "FACILITY_ANSWER"
-                ),
-                "message": message,
-                "citations": citations,
-                "reference_code": state.reference_code,
-                "validator_issues": (validator_issues or [])
-                + (output_policy.issues if not output_policy.is_valid else []),
-            }
-        )
-        self._record_model_output(state, "review", review)
+        review_payload = {
+            "response_type": (
+                response_type
+                or ("INCIDENT_ACKNOWLEDGEMENT" if state.incident_id else "FACILITY_ANSWER")
+            ),
+            "message": message,
+            "citations": citations,
+            "reference_code": state.reference_code,
+            "validator_issues": (validator_issues or [])
+            + (output_policy.issues if not output_policy.is_valid else []),
+        }
+        review = await self.review.run(review_payload)
+        self._record_model_output(state, "review", review_payload, review)
         if review.approved and not validator_issues and output_policy.is_valid:
             state.outcome = "FINALIZED"
             state.final_response = message

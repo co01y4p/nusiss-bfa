@@ -8,6 +8,7 @@ import { apiRequest, managerHeaders } from "@/lib/api";
 type TraceStep = {
   sequence: number;
   node: string;
+  input?: Record<string, unknown> | null;
   output: Record<string, unknown>;
   reason_codes: string[];
 };
@@ -57,6 +58,13 @@ export default function IncidentTracePage() {
                   {step.sequence}. {step.node}
                 </strong>
                 <div>{step.reason_codes.join(" | ")}</div>
+                {step.input && (
+                  <>
+                    <strong>Input</strong>
+                    <pre>{JSON.stringify(step.input, null, 2)}</pre>
+                  </>
+                )}
+                <strong>Output</strong>
                 <pre>{JSON.stringify(step.output, null, 2)}</pre>
               </li>
             ))}

@@ -1,0 +1,15 @@
+{
+  "name": "nusiss-bfa-evaluations",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.19.0",
+  "scripts": {
+    "eval:critical": "promptfoo eval -c promptfooconfig.yaml --filter-metadata tier=critical --no-cache -o results-critical.json",
+    "eval:full": "promptfoo eval -c promptfooconfig.yaml --no-cache -o results-full.json",
+    "metrics:critical": "node scripts/check_metrics.mjs results-critical.json",
+    "metrics:full": "node scripts/check_metrics.mjs results-full.json"
+  },
+  "devDependencies": {
+    "promptfoo": "0.122.2"
+  }
+}

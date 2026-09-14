@@ -4,6 +4,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from app.llm.gateway import FunctionTool
+
 
 class ToolExecutionResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -67,6 +69,27 @@ class ToolRegistry:
             for tool in self._tools.values()
             if caller_level >= self.ROLE_HIERARCHY.get(tool.required_role.upper(), 0)
         ]
+
+    def function_tools(
+        self, *, caller_role: str, names: set[str] | None = None
+    ) -> list[FunctionTool]:
+        """Return API-neutral function definitions backed by this registry."""
+        caller_level = self.ROLE_HIERARCHY.get(caller_role.upper(), 0)
+        definitions: list[FunctionTool] = []
+        for tool in self._tools.values():
+            if names is not None and tool.name not in names:
+                continue
+            required_level = self.ROLE_HIERARCHY.get(tool.required_role.upper(), 0)
+            if caller_level < required_level:
+                continue
+            definitions.append(
+                FunctionTool(
+                    name=tool.name,
+                    description=tool.description,
+                    parameters=tool.input_schema.model_json_schema(),
+                )
+            )
+        return definitions
 
     async def execute(
         self,
