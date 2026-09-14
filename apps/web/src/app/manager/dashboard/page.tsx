@@ -39,7 +39,10 @@ export default function ManagerDashboardPage() {
       const message =
         caught instanceof Error ? caught.message : "Unable to load incidents";
       setError(message);
-      if (message.includes("token")) router.replace("/manager");
+      if (message.includes("token")) {
+        localStorage.removeItem("bfa_manager_token");
+        router.replace("/manager");
+      }
     }
   }, [router]);
 
