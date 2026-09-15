@@ -68,6 +68,11 @@ main {
   margin: 40px auto;
   min-height: calc(100vh - 180px);
 }
+/* Pages with a wide table (e.g. the manager incident queue) opt into a
+   roomier column via .card-wide, without widening every page. */
+main:has(.card-wide) {
+  width: min(1320px, calc(100% - 32px));
+}
 footer {
   padding: 28px;
   color: var(--muted);
@@ -159,6 +164,37 @@ button:disabled {
   background: #fff7e8;
 }
 
+.legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 18px 24px;
+  margin-top: 20px;
+  padding: 18px 20px;
+  background: #f7f9fd;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.legend-heading {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.76rem;
+  font-weight: 800;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.legend-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+.legend-note {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-style: italic;
+}
+
 .table-wrap {
   overflow-x: auto;
 }
@@ -175,10 +211,53 @@ td {
 }
 th {
   color: var(--muted);
-  font-size: 0.88rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+tbody tr:hover {
+  background: #f7f9fd;
 }
 td select {
   min-width: 150px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.badge-dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: currentColor;
+}
+.review-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  padding: 3px 9px;
+  color: var(--warning);
+  background: #fff7e8;
+  border: 1px solid #f3dfb1;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 750;
+}
+.empty-row {
+  padding: 28px 12px;
+  color: var(--muted);
+  text-align: center;
 }
 
 .trace {

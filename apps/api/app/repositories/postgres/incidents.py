@@ -9,7 +9,7 @@ from app.core.models import IncidentModel, WorkflowRunModel
 from app.domain.incidents.models import Incident, IncidentStatus
 
 
-def _to_domain(row: IncidentModel) -> Incident:
+def _to_domain(row: IncidentModel, *, intent: str | None = None) -> Incident:
     return Incident(
         id=row.id,
         reference_code=row.reference_code,
@@ -19,10 +19,39 @@ def _to_domain(row: IncidentModel) -> Incident:
         category=row.category,
         priority=row.priority,
         assigned_team=row.assigned_team,
+        intent=intent,
         requires_human_review=row.requires_human_review,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
+
+
+def _extract_intent(trace: list[dict[str, object]] | None) -> str | None:
+    for step in trace or []:
+        if step.get("node") in ("intent", "intent_finalize"):
+            output = step.get("output")
+            value = output.get("intent") if isinstance(output, dict) else None
+            if isinstance(value, str):
+                return value
+    return None
+
+
+def _latest_intents(session: Session, incident_ids: list[str]) -> dict[str, str | None]:
+    """Most recent workflow run's intent per incident, read from the
+    already-persisted trace JSON (no dedicated `intent` column exists)."""
+    if not incident_ids:
+        return {}
+    rows = session.scalars(
+        select(WorkflowRunModel)
+        .where(WorkflowRunModel.incident_id.in_(incident_ids))
+        .order_by(WorkflowRunModel.created_at.desc())
+    ).all()
+    result: dict[str, str | None] = {}
+    for row in rows:
+        if row.incident_id in result:
+            continue
+        result[row.incident_id] = _extract_intent(row.trace)
+    return result
 
 
 def _reference_code() -> str:
@@ -57,7 +86,9 @@ class SqlAlchemyIncidentRepository:
 
     def get_by_id(self, incident_id: str) -> Incident | None:
         row = self.session.get(IncidentModel, incident_id)
-        return _to_domain(row) if row else None
+        if row is None:
+            return None
+        return _to_domain(row, intent=_latest_intents(self.session, [row.id]).get(row.id))
 
     def get_by_reference(self, reference_code: str) -> Incident | None:
         row = self.session.scalar(
@@ -65,7 +96,9 @@ class SqlAlchemyIncidentRepository:
                 IncidentModel.reference_code == reference_code.strip().upper()
             )
         )
-        return _to_domain(row) if row else None
+        if row is None:
+            return None
+        return _to_domain(row, intent=_latest_intents(self.session, [row.id]).get(row.id))
 
     def list_recent(self, *, limit: int = 200, offset: int = 0) -> list[Incident]:
         rows = self.session.scalars(
@@ -74,7 +107,8 @@ class SqlAlchemyIncidentRepository:
             .limit(limit)
             .offset(offset)
         ).all()
-        return [_to_domain(row) for row in rows]
+        intents = _latest_intents(self.session, [row.id for row in rows])
+        return [_to_domain(row, intent=intents.get(row.id)) for row in rows]
 
     def find_similar(
         self,
@@ -104,7 +138,7 @@ class SqlAlchemyIncidentRepository:
         row.updated_at = datetime.now(UTC)
         self.session.commit()
         self.session.refresh(row)
-        return _to_domain(row)
+        return _to_domain(row, intent=_latest_intents(self.session, [row.id]).get(row.id))
 
     def update_triage(
         self,
@@ -127,7 +161,7 @@ class SqlAlchemyIncidentRepository:
         row.updated_at = datetime.now(UTC)
         self.session.commit()
         self.session.refresh(row)
-        return _to_domain(row)
+        return _to_domain(row, intent=_latest_intents(self.session, [row.id]).get(row.id))
 
 
 class SqlAlchemyWorkflowRunRepository:

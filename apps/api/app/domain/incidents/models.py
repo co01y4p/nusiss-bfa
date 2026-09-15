@@ -29,6 +29,7 @@ class Incident(StrictModel):
     category: str | None = None
     priority: str | None = None
     assigned_team: str | None = None
+    intent: str | None = None
     requires_human_review: bool = False
     created_at: datetime
     updated_at: datetime
