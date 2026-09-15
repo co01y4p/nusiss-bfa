@@ -15,11 +15,10 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <header className="site-header">
-          <Link className="brand" href="/report">
+          <Link className="brand" href="/assistant">
             Facilities AI Assistant
           </Link>
           <nav aria-label="Primary navigation">
-            <Link href="/report">Report</Link>
             <Link href="/assistant">Assistant</Link>
             <Link href="/knowledge">Knowledge (RAG)</Link>
             <Link href="/track">Track</Link>

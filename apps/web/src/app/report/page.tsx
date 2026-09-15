@@ -4,7 +4,7 @@ import { FormEvent, useRef, useState } from "react";
 
 import { apiRequest } from "@/lib/api";
 
-import BuildingMap, { SelectedFacility } from "./building-map";
+import BuildingMap, { SelectedFacility } from "@/components/building-map";
 
 type CreatedIncident = { id: string; reference_code: string; status: string };
 

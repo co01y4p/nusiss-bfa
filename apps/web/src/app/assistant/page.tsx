@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 
 import { apiRequest } from "@/lib/api";
+import BuildingMap, { SelectedFacility } from "@/components/building-map";
 
 export type TraceStep = {
   sequence: number;
@@ -610,6 +611,9 @@ function getHighlightedAttributes(
 export default function AssistantPage() {
   const [messageText, setMessageText] = useState("");
   const [locationText, setLocationText] = useState("");
+  const [selectedFacilityId, setSelectedFacilityId] = useState<string | null>(
+    null,
+  );
   const [result, setResult] = useState<AssistantResult | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -666,6 +670,15 @@ export default function AssistantPage() {
   function setPreset(msg: string, loc: string = "") {
     setMessageText(msg);
     setLocationText(loc);
+    setSelectedFacilityId(null);
+    setResult(null);
+    setError("");
+  }
+
+  function selectFacility(facility: SelectedFacility) {
+    setSelectedFacilityId(facility.facilityId);
+    setLocationText(facility.locationLabel);
+    setMessageText((prev) => (prev.trim() ? prev : facility.example));
     setResult(null);
     setError("");
   }
@@ -908,6 +921,13 @@ export default function AssistantPage() {
           </div>
         </div>
 
+        <p className="lede" style={{ marginBottom: "0.5rem" }}>
+          Click a facility in the building below to auto-fill the location
+          and a sample message — useful when reporting an issue tied to a
+          specific area.
+        </p>
+        <BuildingMap selectedId={selectedFacilityId} onSelect={selectFacility} />
+
         <form onSubmit={submit}>
           <label htmlFor="message">User Message / Prompt</label>
           <textarea
@@ -925,7 +945,10 @@ export default function AssistantPage() {
             id="location"
             name="location"
             value={locationText}
-            onChange={(e) => setLocationText(e.target.value)}
+            onChange={(e) => {
+              setLocationText(e.target.value);
+              setSelectedFacilityId(null);
+            }}
             placeholder="e.g. Block B Level 2"
             maxLength={200}
           />
