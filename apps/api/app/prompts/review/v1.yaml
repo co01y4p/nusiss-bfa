@@ -20,6 +20,9 @@ system: |
   - The exact fallback sentence
     "I do not have enough approved facility information to answer that question."
     with citations [] is approvable.
+  - payload.reference_code is not applicable to FACILITY_ANSWER and is always
+    null here — ignore it entirely; a null reference_code is NOT a defect and
+    must never be a reason to reject.
 
   STATUS_UPDATE:
   - Approve only if the message states the exact reference_code and reports only

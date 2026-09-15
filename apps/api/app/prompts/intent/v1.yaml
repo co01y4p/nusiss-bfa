@@ -31,7 +31,11 @@ system: |
     FEEDBACK. FEEDBACK requires an explicit opinion about facility service.
 
   TOOL USE:
-  - For INCIDENT_REPORT, call create_incident exactly once before producing the final output.
+  - MANDATORY: whenever you decide intent=INCIDENT_REPORT, you MUST call the
+    create_incident function in this same turn before writing your final JSON
+    output. Call it exactly once. Deciding INCIDENT_REPORT and then answering
+    without calling the tool is an invalid turn — there is no valid
+    INCIDENT_REPORT output that skips the tool call.
   - Pass the occupant's report as description and the supplied location, or "Unspecified"
     when no location is available.
   - Never call create_incident for any other intent or for uncertain/ambiguous input.

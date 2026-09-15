@@ -5,7 +5,12 @@ from typing import Any
 from pydantic import Field
 
 from app.agents.base import BaseAgent, StrictAgentModel
-from app.llm.gateway import FunctionCallRecord, StructuredLLM, ToolCallingError
+from app.llm.gateway import (
+    FunctionCallRecord,
+    StructuredLLM,
+    ToolCallingError,
+    ToolCallingResult,
+)
 from app.tools.registry import ToolRegistry
 
 
@@ -61,30 +66,63 @@ class IntentAgent(BaseAgent[IntentOutput]):
             result = await registry.execute(name, arguments, caller_role="SYSTEM")
             return result.model_dump(mode="json")
 
+        async def call_model(user_payload: dict[str, Any]) -> ToolCallingResult[IntentOutput]:
+            available_tools = (
+                registry.function_tools(caller_role="SYSTEM", names={"create_incident"})
+                if registry is not None
+                else []
+            )
+            return await self.llm.generate_with_tools(
+                system_prompt=self.system_prompt,
+                user_payload=user_payload,
+                output_schema=self.output_schema,
+                tools=available_tools,
+                tool_executor=execute_tool,
+                model=self.model,
+                temperature=0.0,
+                timeout_seconds=self.timeout_seconds,
+                max_tool_calls=1,
+            )
+
         try:
             async with asyncio.timeout(self.timeout_seconds):
-                available_tools = (
-                    registry.function_tools(caller_role="SYSTEM", names={"create_incident"})
-                    if registry is not None
-                    else []
-                )
-                result = await self.llm.generate_with_tools(
-                    system_prompt=self.system_prompt,
-                    user_payload=payload,
-                    output_schema=self.output_schema,
-                    tools=available_tools,
-                    tool_executor=execute_tool,
-                    model=self.model,
-                    temperature=0.0,
-                    timeout_seconds=self.timeout_seconds,
-                    max_tool_calls=1,
-                )
+                result = await call_model(payload)
+                created = self._created_incident(result.tool_calls)
+
+                # The model may classify this as a new incident but skip the
+                # required create_incident call. Retry with a reminder, up to
+                # max_attempts total, rather than silently punting the
+                # occupant to manual triage after a single missed call.
+                max_attempts = 3
+                attempt = 1
+                while (
+                    created is None
+                    and result.output.intent == Intent.INCIDENT_REPORT
+                    and attempt < max_attempts
+                ):
+                    attempt += 1
+                    retry_payload = {
+                        **payload,
+                        "_reminder": (
+                            "Your previous turn classified this message as "
+                            "INCIDENT_REPORT but did not call create_incident. "
+                            "Call it now before returning your final output."
+                        ),
+                    }
+                    retry_result = await call_model(retry_payload)
+                    result = ToolCallingResult(
+                        output=retry_result.output,
+                        tool_calls=result.tool_calls + retry_result.tool_calls,
+                        model_calls=result.model_calls + retry_result.model_calls,
+                        first_model_input=result.first_model_input,
+                    )
+                    created = self._created_incident(result.tool_calls)
+
                 self.model_calls = result.model_calls
                 self.tool_calls = result.tool_calls
                 self.first_model_input = result.first_model_input
                 self.final_model_input = self._build_final_model_input(result.tool_calls)
                 output = result.output
-                created = self._created_incident(result.tool_calls)
                 if created is not None:
                     # Tool output is authoritative; never accept a model-invented identifier.
                     output.incident_id = created["id"]
@@ -141,16 +179,19 @@ class IntentAgent(BaseAgent[IntentOutput]):
 
     @staticmethod
     def _created_incident(tool_calls: list[FunctionCallRecord]) -> dict[str, str] | None:
-        create_call = next((call for call in tool_calls if call.name == "create_incident"), None)
-        created = create_call.output.get("data") if create_call else None
-        if (
-            create_call
-            and create_call.output.get("success") is True
-            and isinstance(created, dict)
-            and isinstance(created.get("id"), str)
-            and isinstance(created.get("reference_code"), str)
-        ):
-            return {"id": created["id"], "reference_code": created["reference_code"]}
+        # Prefer the most recent successful call: a retry may follow an earlier
+        # failed or skipped attempt.
+        for call in reversed(tool_calls):
+            if call.name != "create_incident":
+                continue
+            created = call.output.get("data")
+            if (
+                call.output.get("success") is True
+                and isinstance(created, dict)
+                and isinstance(created.get("id"), str)
+                and isinstance(created.get("reference_code"), str)
+            ):
+                return {"id": created["id"], "reference_code": created["reference_code"]}
         return None
 
     def fallback(self, payload: dict[str, Any], error: Exception) -> IntentOutput:

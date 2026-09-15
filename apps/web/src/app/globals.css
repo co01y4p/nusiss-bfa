@@ -122,6 +122,13 @@ textarea {
   min-height: 140px;
   resize: vertical;
 }
+input[type="checkbox"],
+input[type="radio"] {
+  width: auto;
+  padding: 0;
+  margin: 0;
+  accent-color: var(--brand);
+}
 
 button,
 .button-link {
