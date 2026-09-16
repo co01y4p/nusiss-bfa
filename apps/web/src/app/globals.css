@@ -60,7 +60,9 @@ nav a {
   border-radius: 999px;
   text-decoration: none;
   font-weight: 600;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
 }
 nav a:hover {
   color: var(--brand);
@@ -1239,4 +1241,3 @@ td select {
   border-radius: 6px;
   font-weight: 600;
 }
-

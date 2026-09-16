@@ -48,9 +48,10 @@ def _latest_intents(session: Session, incident_ids: list[str]) -> dict[str, str 
     ).all()
     result: dict[str, str | None] = {}
     for row in rows:
-        if row.incident_id in result:
+        incident_id = row.incident_id
+        if incident_id is None or incident_id in result:
             continue
-        result[row.incident_id] = _extract_intent(row.trace)
+        result[incident_id] = _extract_intent(row.trace)
     return result
 
 

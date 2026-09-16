@@ -49,9 +49,7 @@ def register_incident_tools(registry: "ToolRegistry", incident_repo: IncidentRep
             "id": incident.id,
             "reference_code": incident.reference_code,
             "status": (
-                incident.status.value
-                if hasattr(incident.status, "value")
-                else str(incident.status)
+                incident.status.value if hasattr(incident.status, "value") else str(incident.status)
             ),
         }
 

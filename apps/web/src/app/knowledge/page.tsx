@@ -58,9 +58,7 @@ export default function KnowledgePage() {
   const [previewChunks, setPreviewChunks] = useState<
     Record<string, ChunkPreview[]>
   >({});
-  const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(
-    null,
-  );
+  const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState("");
 
   // Search sandbox state
@@ -329,9 +327,7 @@ export default function KnowledgePage() {
                         <span
                           className="pill"
                           style={{
-                            background: doc.is_approved
-                              ? "#2e7d32"
-                              : "#e65100",
+                            background: doc.is_approved ? "#2e7d32" : "#e65100",
                             color: "#ffffff",
                             fontSize: "0.75rem",
                           }}
@@ -351,7 +347,9 @@ export default function KnowledgePage() {
                       </div>
                     </div>
 
-                    <div style={{ display: "flex", gap: "0.5rem", flex: "none" }}>
+                    <div
+                      style={{ display: "flex", gap: "0.5rem", flex: "none" }}
+                    >
                       <button
                         type="button"
                         onClick={() => togglePreview(doc)}

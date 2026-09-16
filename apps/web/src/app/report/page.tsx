@@ -56,9 +56,9 @@ export default function ReportPage() {
       <h1>Report a facility issue</h1>
       <p className="lede">
         Reports are saved immediately and do not depend on the AI workflow.
-        Click a facility in the building below to auto-fill the location and
-        a sample description — the classification agent then routes reports
-        by area (HVAC, lift, electrical, plumbing, access, general).
+        Click a facility in the building below to auto-fill the location and a
+        sample description — the classification agent then routes reports by
+        area (HVAC, lift, electrical, plumbing, access, general).
       </p>
       <BuildingMap selectedId={selectedFacilityId} onSelect={selectFacility} />
       <form onSubmit={submit}>

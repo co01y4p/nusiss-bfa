@@ -23,8 +23,14 @@ const CATEGORY_META: Record<string, Meta> = {
 
 const TEAM_META: Record<string, Meta> = {
   HVAC_TEAM: { label: "HVAC Team", color: CATEGORY_META.HVAC.color },
-  ELECTRICAL_TEAM: { label: "Electrical Team", color: CATEGORY_META.ELECTRICAL.color },
-  PLUMBING_TEAM: { label: "Plumbing Team", color: CATEGORY_META.PLUMBING.color },
+  ELECTRICAL_TEAM: {
+    label: "Electrical Team",
+    color: CATEGORY_META.ELECTRICAL.color,
+  },
+  PLUMBING_TEAM: {
+    label: "Plumbing Team",
+    color: CATEGORY_META.PLUMBING.color,
+  },
   LIFT_TEAM: { label: "Lift Team", color: CATEGORY_META.LIFT.color },
   SECURITY_TEAM: { label: "Security Team", color: "#b42318" },
   FACILITIES_DESK: { label: "Facilities Desk", color: "#5e687a" },
@@ -63,12 +69,28 @@ function Chip({ label, color }: { label: string; color: string }) {
   );
 }
 
-function Badge({ meta, fallback }: { meta: Meta | undefined; fallback: string }) {
+function Badge({
+  meta,
+  fallback,
+}: {
+  meta: Meta | undefined;
+  fallback: string;
+}) {
   if (!meta) {
-    return <span className="badge" style={{ color: "#5e687a", background: "#eef1f6" }}>{fallback}</span>;
+    return (
+      <span
+        className="badge"
+        style={{ color: "#5e687a", background: "#eef1f6" }}
+      >
+        {fallback}
+      </span>
+    );
   }
   return (
-    <span className="badge" style={{ color: meta.color, background: `${meta.color}18` }}>
+    <span
+      className="badge"
+      style={{ color: meta.color, background: `${meta.color}18` }}
+    >
       <span className="badge-dot" />
       {meta.label}
     </span>
@@ -186,9 +208,9 @@ export default function ManagerDashboardPage() {
           </div>
           <p className="legend-note">
             Decided by the assistant before an incident exists — only
-            &ldquo;Incident Report&rdquo; messages create a row below.
-            Incidents logged without going through the assistant show as
-            &ldquo;Manual entry&rdquo;.
+            &ldquo;Incident Report&rdquo; messages create a row below. Incidents
+            logged without going through the assistant show as &ldquo;Manual
+            entry&rdquo;.
           </p>
         </div>
       </div>
@@ -225,16 +247,25 @@ export default function ManagerDashboardPage() {
                 <td>{incident.description}</td>
                 <td>
                   {incident.intent ? (
-                    <Badge meta={INTENT_META[incident.intent]} fallback={incident.intent} />
+                    <Badge
+                      meta={INTENT_META[incident.intent]}
+                      fallback={incident.intent}
+                    />
                   ) : (
                     <Badge meta={MANUAL_INTENT_META} fallback="Manual entry" />
                   )}
                 </td>
                 <td>
                   {incident.category ? (
-                    <Badge meta={CATEGORY_META[incident.category]} fallback={incident.category} />
+                    <Badge
+                      meta={CATEGORY_META[incident.category]}
+                      fallback={incident.category}
+                    />
                   ) : (
-                    <span className="badge" style={{ color: "#5e687a", background: "#eef1f6" }}>
+                    <span
+                      className="badge"
+                      style={{ color: "#5e687a", background: "#eef1f6" }}
+                    >
                       Unclassified
                     </span>
                   )}
@@ -244,18 +275,30 @@ export default function ManagerDashboardPage() {
                 </td>
                 <td>
                   {incident.priority ? (
-                    <Badge meta={PRIORITY_META[incident.priority]} fallback={incident.priority} />
+                    <Badge
+                      meta={PRIORITY_META[incident.priority]}
+                      fallback={incident.priority}
+                    />
                   ) : (
-                    <span className="badge" style={{ color: "#5e687a", background: "#eef1f6" }}>
+                    <span
+                      className="badge"
+                      style={{ color: "#5e687a", background: "#eef1f6" }}
+                    >
                       Pending
                     </span>
                   )}
                 </td>
                 <td>
                   {incident.assigned_team ? (
-                    <Badge meta={TEAM_META[incident.assigned_team]} fallback={incident.assigned_team} />
+                    <Badge
+                      meta={TEAM_META[incident.assigned_team]}
+                      fallback={incident.assigned_team}
+                    />
                   ) : (
-                    <span className="badge" style={{ color: "#5e687a", background: "#eef1f6" }}>
+                    <span
+                      className="badge"
+                      style={{ color: "#5e687a", background: "#eef1f6" }}
+                    >
                       Unassigned
                     </span>
                   )}

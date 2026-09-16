@@ -5,12 +5,7 @@ import { useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
 
 export type FacilityCategory =
-  | "HVAC"
-  | "LIFT"
-  | "ELECTRICAL"
-  | "PLUMBING"
-  | "ACCESS"
-  | "GENERAL";
+  "HVAC" | "LIFT" | "ELECTRICAL" | "PLUMBING" | "ACCESS" | "GENERAL";
 
 export type Facility = { id: string; name: string; category: FacilityCategory };
 export type Floor = { id: string; name: string; facilities: Facility[] };
@@ -24,7 +19,13 @@ export type SelectedFacility = {
 
 const CATEGORY_META: Record<
   FacilityCategory,
-  { color: string; pastel: string; icon: string; label: string; example: string }
+  {
+    color: string;
+    pastel: string;
+    icon: string;
+    label: string;
+    example: string;
+  }
 > = {
   HVAC: {
     color: "#1457d9",
@@ -107,9 +108,8 @@ export default function BuildingMap({
   if (floors.length === 0) {
     return (
       <div className="notice warning">
-        No building layout has been configured yet. Enter the location
-        manually below, or ask a manager to set one up under Manager →
-        Building setup.
+        No building layout has been configured yet. Enter the location manually
+        below, or ask a manager to set one up under Manager → Building setup.
       </div>
     );
   }

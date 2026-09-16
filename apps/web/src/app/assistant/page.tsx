@@ -922,11 +922,14 @@ export default function AssistantPage() {
         </div>
 
         <p className="lede" style={{ marginBottom: "0.5rem" }}>
-          Click a facility in the building below to auto-fill the location
-          and a sample message — useful when reporting an issue tied to a
-          specific area.
+          Click a facility in the building below to auto-fill the location and a
+          sample message — useful when reporting an issue tied to a specific
+          area.
         </p>
-        <BuildingMap selectedId={selectedFacilityId} onSelect={selectFacility} />
+        <BuildingMap
+          selectedId={selectedFacilityId}
+          onSelect={selectFacility}
+        />
 
         <form onSubmit={submit}>
           <label htmlFor="message">User Message / Prompt</label>

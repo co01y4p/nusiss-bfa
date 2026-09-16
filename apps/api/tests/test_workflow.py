@@ -74,8 +74,9 @@ async def test_intent_router_calls_create_incident_before_downstream_agents() ->
     assert intent_step.input is not None
     assert intent_step.input["original_input"] == first_intent_step.input
     assert intent_step.input["function_calls"][0]["name"] == "create_incident"
-    assert intent_step.input["function_call_outputs"][0]["call_id"] == (
-        first_intent_step.output["function_call"]["call_id"]
+    assert (
+        intent_step.input["function_call_outputs"][0]["call_id"]
+        == (first_intent_step.output["function_call"]["call_id"])
     )
     assert intent_step.output["incident_id"] == state.incident_id
     assert intent_step.output["reference_code"] == state.reference_code

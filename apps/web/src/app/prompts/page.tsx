@@ -66,40 +66,42 @@ export default function PromptsPage() {
     return editedPrompt.trim() !== selectedAgent.system_prompt.trim();
   }, [selectedAgent, editedPrompt]);
 
-  const loadPrompts = useCallback(async (preferredAgentName?: string) => {
-    setIsLoading(true);
-    setNotice(null);
-    try {
-      const data = await apiRequest<PromptListResponse>("/prompts", {
-        headers: managerHeaders(),
-      });
-      setAgents(data.agents);
-      const targetName = preferredAgentName || selectedName;
-      const current =
-        data.agents.find((a) => a.name === targetName) || data.agents[0];
-      if (current) {
-        setSelectedName(current.name);
-        setEditedPrompt(current.system_prompt);
-        setTestPayloadText(JSON.stringify(current.sample_input, null, 2));
+  const loadPrompts = useCallback(
+    async (preferredAgentName?: string) => {
+      setIsLoading(true);
+      setNotice(null);
+      try {
+        const data = await apiRequest<PromptListResponse>("/prompts", {
+          headers: managerHeaders(),
+        });
+        setAgents(data.agents);
+        const targetName = preferredAgentName || selectedName;
+        const current =
+          data.agents.find((a) => a.name === targetName) || data.agents[0];
+        if (current) {
+          setSelectedName(current.name);
+          setEditedPrompt(current.system_prompt);
+          setTestPayloadText(JSON.stringify(current.sample_input, null, 2));
+        }
+      } catch (err) {
+        setNotice({
+          type: "error",
+          text:
+            err instanceof Error
+              ? err.message
+              : "Failed to load agent prompts. Ensure backend is running.",
+        });
+      } finally {
+        setIsLoading(false);
       }
-    } catch (err) {
-      setNotice({
-        type: "error",
-        text:
-          err instanceof Error
-            ? err.message
-            : "Failed to load agent prompts. Ensure backend is running.",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [selectedName]);
+    },
+    [selectedName],
+  );
 
   useEffect(() => {
     const task = window.setTimeout(() => void loadPrompts(), 0);
     return () => window.clearTimeout(task);
   }, [loadPrompts]);
-
 
   function handleSelectAgent(agent: PromptSummary) {
     setSelectedName(agent.name);
@@ -239,8 +241,8 @@ export default function PromptsPage() {
             <h1>Agent Prompt Control Studio</h1>
             <p className="lede">
               Fine-tune, govern, and live-test system prompts for each of the 8
-              bounded multi-agent workflow components. Custom prompts take effect
-              immediately in live assistant triage.
+              bounded multi-agent workflow components. Custom prompts take
+              effect immediately in live assistant triage.
             </p>
           </div>
           <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
@@ -348,9 +350,7 @@ export default function PromptsPage() {
 
                   <div className="editor-actions-bar">
                     {isDirty && (
-                      <span className="unsaved-indicator">
-                        ● Unsaved edits
-                      </span>
+                      <span className="unsaved-indicator">● Unsaved edits</span>
                     )}
 
                     <button
@@ -390,7 +390,9 @@ export default function PromptsPage() {
                           onClick={() => void handleReset()}
                           disabled={isResetting}
                         >
-                          {isResetting ? "Resetting..." : "Confirm Revert to v1"}
+                          {isResetting
+                            ? "Resetting..."
+                            : "Confirm Revert to v1"}
                         </button>
                         <button
                           type="button"
@@ -424,7 +426,9 @@ export default function PromptsPage() {
                     fontSize: "0.82rem",
                   }}
                 >
-                  <strong style={{ color: "#334155" }}>Contract Output Schema:</strong>{" "}
+                  <strong style={{ color: "#334155" }}>
+                    Contract Output Schema:
+                  </strong>{" "}
                   <code style={{ color: "var(--brand-dark)" }}>
                     {selectedAgent.output_schema_summary}
                   </code>
@@ -493,7 +497,13 @@ export default function PromptsPage() {
                   >
                     System Prompt Instructions
                   </label>
-                  <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "12px",
+                      alignItems: "center",
+                    }}
+                  >
                     <span style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
                       Approx. {Math.round(editedPrompt.length / 4)} tokens
                     </span>
@@ -524,7 +534,13 @@ export default function PromptsPage() {
                       </span>
                     )}
                   </div>
-                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "8px",
+                      alignItems: "center",
+                    }}
+                  >
                     <input
                       type="text"
                       placeholder="Optional version note (e.g. Added safety rule)"
