@@ -192,3 +192,30 @@ def test_assistant_returns_trace_when_requested(client: TestClient) -> None:
     nodes = [step["node"] for step in assistant_result["trace"]]
     assert "security" in nodes
     assert "intent" in nodes
+
+
+def test_knowledge_document_chunk_preview(client: TestClient) -> None:
+    created = client.post(
+        "/api/v1/knowledge/documents",
+        json={
+            "title": "Parking Policy",
+            "content": (
+                "# Parking Policy\n\n"
+                "## Visitor Parking\nVisitor parking is on B2.\n\n"
+                "## EV Charging\nEV bays are on B2 Lots 10-20."
+            ),
+        },
+    )
+    assert created.status_code == 200
+    doc = created.json()
+    assert doc["chunk_count"] > 0
+
+    preview = client.get(f"/api/v1/knowledge/documents/{doc['id']}/chunks")
+    assert preview.status_code == 200
+    chunks = preview.json()
+    assert len(chunks) == doc["chunk_count"]
+    assert chunks == sorted(chunks, key=lambda c: c["chunk_index"])
+    assert any("Visitor Parking" in c["heading"] for c in chunks)
+
+    missing = client.get("/api/v1/knowledge/documents/does-not-exist/chunks")
+    assert missing.status_code == 404

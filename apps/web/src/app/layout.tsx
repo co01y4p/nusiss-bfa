@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import SiteNav from "@/components/site-nav";
+
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -18,14 +20,7 @@ export default function RootLayout({
           <Link className="brand" href="/assistant">
             Facilities AI Assistant
           </Link>
-          <nav aria-label="Primary navigation">
-            <Link href="/assistant">Assistant</Link>
-            <Link href="/knowledge">Knowledge (RAG)</Link>
-            <Link href="/track">Track</Link>
-            <Link href="/prompts">Prompts</Link>
-            <Link href="/manager">Manager</Link>
-          </nav>
-
+          <SiteNav />
         </header>
         <main>{children}</main>
         <footer>Bounded multi-agent capstone harness</footer>

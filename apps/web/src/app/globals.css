@@ -55,12 +55,19 @@ nav {
   flex-wrap: wrap;
 }
 nav a {
+  padding: 6px 12px;
   color: var(--muted);
+  border-radius: 999px;
   text-decoration: none;
   font-weight: 600;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 nav a:hover {
   color: var(--brand);
+}
+nav a.active {
+  color: var(--brand);
+  background: #eaf0ff;
 }
 
 main {
@@ -306,17 +313,20 @@ td select {
 }
 .building-figure {
   overflow: hidden;
-  background: var(--surface);
-  border: 2px solid var(--ink);
-  border-radius: 10px 10px 3px 3px;
+  background: linear-gradient(180deg, #f7f9fd 0%, var(--surface) 120px);
+  border: 1px solid var(--line);
+  border-radius: 18px 18px 6px 6px;
+  box-shadow: 0 10px 28px rgb(23 32 51 / 6%);
 }
 .building-roof {
-  height: 14px;
-  background: var(--ink);
+  height: 12px;
+  background: linear-gradient(90deg, #1457d9, #6d3fa0, #0f7a8c, #167447);
+  opacity: 0.9;
 }
 .building-ground {
-  height: 10px;
+  height: 8px;
   background: var(--ink);
+  opacity: 0.85;
 }
 .building-floor-row {
   display: flex;
@@ -344,54 +354,79 @@ td select {
   display: flex;
   flex: 1;
   flex-wrap: wrap;
-  gap: 1px;
-  background: var(--line);
+  gap: 10px;
+  padding: 10px;
+  background: #fbfcfe;
 }
 .muted-note {
   flex: 1;
   padding: 10px 14px;
   color: var(--muted);
   background: var(--surface);
+  border-radius: 10px;
   font-size: 0.86rem;
 }
 .room-block {
-  flex: 1 1 110px;
-  min-width: 96px;
-  min-height: 64px;
+  flex: 1 1 112px;
+  min-width: 100px;
+  min-height: 80px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   margin: 0;
-  padding: 10px 8px;
+  padding: 12px 8px;
   color: var(--ink);
-  background: var(--surface);
-  border: 0;
-  border-top: 4px solid var(--room-color, var(--brand));
+  background: var(--room-pastel, #eef1f6);
+  border: 1.5px solid transparent;
+  border-radius: 14px;
   font: inherit;
   font-size: 0.82rem;
   font-weight: 700;
   text-align: center;
   cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgb(23 32 51 / 5%);
   transition:
-    background 0.15s ease,
-    color 0.15s ease;
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+.room-icon {
+  font-size: 1.2rem;
+  line-height: 1;
+}
+.room-name {
+  line-height: 1.25;
 }
 .room-block:hover,
 .room-block:focus-visible {
-  background: #f2f5fb;
+  transform: translateY(-2px);
+  border-color: var(--room-color, var(--brand));
+  box-shadow: 0 8px 16px rgb(23 32 51 / 12%);
 }
 .room-block[data-selected="true"] {
   color: white;
   background: var(--room-color, var(--brand));
+  border-color: var(--room-color, var(--brand));
+  box-shadow: 0 8px 18px rgb(23 32 51 / 20%);
 }
 .building-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 18px;
+  gap: 8px 10px;
   margin-top: 16px;
 }
 .legend-item {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  color: var(--muted);
+  padding: 5px 12px 5px 8px;
+  color: var(--ink);
+  background: #f7f9fd;
+  border: 1px solid var(--line);
+  border-radius: 999px;
   font-size: 0.86rem;
   font-weight: 700;
 }

@@ -32,6 +32,14 @@ type SearchResult = {
   chunks: RetrievedChunk[];
 };
 
+type ChunkPreview = {
+  id: string;
+  chunk_index: number;
+  heading: string;
+  content: string;
+  token_count: number;
+};
+
 export default function KnowledgePage() {
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,6 +52,16 @@ export default function KnowledgePage() {
   const [newScope, setNewScope] = useState("PUBLIC");
   const [newApproved, setNewApproved] = useState(true);
   const [ingesting, setIngesting] = useState(false);
+
+  // Chunk preview state
+  const [previewDocId, setPreviewDocId] = useState<string | null>(null);
+  const [previewChunks, setPreviewChunks] = useState<
+    Record<string, ChunkPreview[]>
+  >({});
+  const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(
+    null,
+  );
+  const [previewError, setPreviewError] = useState("");
 
   // Search sandbox state
   const [searchQuery, setSearchQuery] = useState("");
@@ -120,11 +138,40 @@ export default function KnowledgePage() {
     try {
       await apiRequest(`/knowledge/documents/${doc.id}`, { method: "DELETE" });
       setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+      setPreviewChunks((prev) => {
+        const next = { ...prev };
+        delete next[doc.id];
+        return next;
+      });
+      setPreviewDocId((current) => (current === doc.id ? null : current));
       setSuccess(`Deleted document "${doc.title}".`);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to delete document",
       );
+    }
+  }
+
+  async function togglePreview(doc: DocumentSummary) {
+    if (previewDocId === doc.id) {
+      setPreviewDocId(null);
+      return;
+    }
+    setPreviewDocId(doc.id);
+    setPreviewError("");
+    if (previewChunks[doc.id]) return;
+    setPreviewLoadingId(doc.id);
+    try {
+      const chunks = await apiRequest<ChunkPreview[]>(
+        `/knowledge/documents/${doc.id}/chunks`,
+      );
+      setPreviewChunks((prev) => ({ ...prev, [doc.id]: chunks }));
+    } catch (err) {
+      setPreviewError(
+        err instanceof Error ? err.message : "Failed to load chunk preview",
+      );
+    } finally {
+      setPreviewLoadingId(null);
     }
   }
 
@@ -246,82 +293,182 @@ export default function KnowledgePage() {
           <div
             style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}
           >
-            {documents.map((doc) => (
-              <div
-                key={doc.id}
-                style={{
-                  border: "1px solid #e0e0e0",
-                  borderRadius: "8px",
-                  padding: "1rem",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  background: doc.is_approved ? "#fafafa" : "#fff8e1",
-                }}
-              >
-                <div>
+            {documents.map((doc) => {
+              const isOpen = previewDocId === doc.id;
+              const chunks = previewChunks[doc.id];
+              return (
+                <div
+                  key={doc.id}
+                  style={{
+                    border: "1px solid #e0e0e0",
+                    borderRadius: "8px",
+                    padding: "1rem",
+                    background: doc.is_approved ? "#fafafa" : "#fff8e1",
+                  }}
+                >
                   <div
                     style={{
                       display: "flex",
+                      justifyContent: "space-between",
                       alignItems: "center",
-                      gap: "0.5rem",
-                      marginBottom: "0.25rem",
+                      gap: "1rem",
                     }}
                   >
-                    <strong style={{ fontSize: "1.05rem" }}>{doc.title}</strong>
-                    <span
-                      className="pill"
+                    <div>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.5rem",
+                          marginBottom: "0.25rem",
+                        }}
+                      >
+                        <strong style={{ fontSize: "1.05rem" }}>
+                          {doc.title}
+                        </strong>
+                        <span
+                          className="pill"
+                          style={{
+                            background: doc.is_approved
+                              ? "#2e7d32"
+                              : "#e65100",
+                            color: "#ffffff",
+                            fontSize: "0.75rem",
+                          }}
+                        >
+                          {doc.is_approved ? "APPROVED" : "UNAPPROVED"}
+                        </span>
+                        <span className="pill" style={{ fontSize: "0.75rem" }}>
+                          Scope: {doc.access_scope}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: "0.85rem", color: "#666" }}>
+                        <span>
+                          Chunks: <strong>{doc.chunk_count}</strong>
+                        </span>{" "}
+                        | <span>Version: {doc.version}</span> |{" "}
+                        <span>Source: {doc.source_path}</span>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", gap: "0.5rem", flex: "none" }}>
+                      <button
+                        type="button"
+                        onClick={() => togglePreview(doc)}
+                        disabled={doc.chunk_count === 0}
+                        className="button-secondary"
+                        style={{
+                          width: "auto",
+                          padding: "0.4rem 0.8rem",
+                          fontSize: "0.85rem",
+                        }}
+                      >
+                        {isOpen ? "Hide preview" : "Preview chunks"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => toggleApproval(doc)}
+                        style={{
+                          width: "auto",
+                          padding: "0.4rem 0.8rem",
+                          background: doc.is_approved ? "#ef6c00" : "#2e7d32",
+                          color: "#fff",
+                          fontSize: "0.85rem",
+                        }}
+                      >
+                        {doc.is_approved ? "Revoke (Unapprove)" : "Approve"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteDoc(doc)}
+                        style={{
+                          width: "auto",
+                          padding: "0.4rem 0.8rem",
+                          background: "#d32f2f",
+                          color: "#fff",
+                          fontSize: "0.85rem",
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+
+                  {isOpen && (
+                    <div
                       style={{
-                        background: doc.is_approved ? "#2e7d32" : "#e65100",
-                        color: "#ffffff",
-                        fontSize: "0.75rem",
+                        marginTop: "0.9rem",
+                        paddingTop: "0.9rem",
+                        borderTop: "1px solid #e0e0e0",
                       }}
                     >
-                      {doc.is_approved ? "APPROVED" : "UNAPPROVED"}
-                    </span>
-                    <span className="pill" style={{ fontSize: "0.75rem" }}>
-                      Scope: {doc.access_scope}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: "0.85rem", color: "#666" }}>
-                    <span>
-                      Chunks: <strong>{doc.chunk_count}</strong>
-                    </span>{" "}
-                    | <span>Version: {doc.version}</span> |{" "}
-                    <span>Source: {doc.source_path}</span>
-                  </div>
+                      {previewLoadingId === doc.id ? (
+                        <p className="lede" style={{ margin: 0 }}>
+                          Loading chunks...
+                        </p>
+                      ) : previewError ? (
+                        <div className="notice error" style={{ marginTop: 0 }}>
+                          {previewError}
+                        </div>
+                      ) : (
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "0.6rem",
+                          }}
+                        >
+                          {(chunks ?? []).map((chunk) => (
+                            <div
+                              key={chunk.id}
+                              style={{
+                                border: "1px solid #ddd",
+                                borderRadius: "6px",
+                                padding: "0.6rem 0.85rem",
+                                background: "#ffffff",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  alignItems: "baseline",
+                                  gap: "0.5rem",
+                                  marginBottom: "0.3rem",
+                                }}
+                              >
+                                <strong style={{ fontSize: "0.9rem" }}>
+                                  #{chunk.chunk_index} {chunk.heading}
+                                </strong>
+                                <span
+                                  style={{
+                                    fontSize: "0.72rem",
+                                    color: "#888",
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  {chunk.token_count} tokens
+                                </span>
+                              </div>
+                              <p
+                                style={{
+                                  margin: 0,
+                                  fontSize: "0.85rem",
+                                  color: "#333",
+                                  whiteSpace: "pre-wrap",
+                                }}
+                              >
+                                {chunk.content}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-
-                <div style={{ display: "flex", gap: "0.5rem" }}>
-                  <button
-                    type="button"
-                    onClick={() => toggleApproval(doc)}
-                    style={{
-                      width: "auto",
-                      padding: "0.4rem 0.8rem",
-                      background: doc.is_approved ? "#ef6c00" : "#2e7d32",
-                      color: "#fff",
-                      fontSize: "0.85rem",
-                    }}
-                  >
-                    {doc.is_approved ? "Revoke (Unapprove)" : "Approve"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => deleteDoc(doc)}
-                    style={{
-                      width: "auto",
-                      padding: "0.4rem 0.8rem",
-                      background: "#d32f2f",
-                      color: "#fff",
-                      fontSize: "0.85rem",
-                    }}
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>

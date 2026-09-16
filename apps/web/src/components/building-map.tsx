@@ -24,36 +24,48 @@ export type SelectedFacility = {
 
 const CATEGORY_META: Record<
   FacilityCategory,
-  { color: string; label: string; example: string }
+  { color: string; pastel: string; icon: string; label: string; example: string }
 > = {
   HVAC: {
     color: "#1457d9",
+    pastel: "#e6f0ff",
+    icon: "🌬️",
     label: "HVAC",
     example:
       "The HVAC/AC unit here is blowing warm air and making an unusual noise.",
   },
   LIFT: {
     color: "#6d3fa0",
+    pastel: "#f2eafb",
+    icon: "🛗",
     label: "Lift",
     example: "The lift here is stuck or not responding to calls.",
   },
   ELECTRICAL: {
     color: "#a15c00",
+    pastel: "#fdf1de",
+    icon: "⚡",
     label: "Electrical",
     example: "There is a power or wiring issue in this area.",
   },
   PLUMBING: {
     color: "#0f7a8c",
+    pastel: "#e2f6f5",
+    icon: "🚰",
     label: "Plumbing",
     example: "There is a leak, blockage, or plumbing issue in this area.",
   },
   ACCESS: {
     color: "#167447",
+    pastel: "#e5f6ec",
+    icon: "🚪",
     label: "Access",
     example: "The door or access control here is not working.",
   },
   GENERAL: {
     color: "#47536b",
+    pastel: "#edeff3",
+    icon: "🏢",
     label: "General",
     example: "There is a facility issue in this area that needs attention.",
   },
@@ -115,16 +127,26 @@ export default function BuildingMap({
               )}
               {floor.facilities.map((facility) => {
                 const meta = CATEGORY_META[facility.category];
+                const selected = selectedId === facility.id;
                 return (
                   <button
                     type="button"
                     key={facility.id}
                     className="room-block"
-                    data-selected={selectedId === facility.id}
-                    style={{ "--room-color": meta.color } as React.CSSProperties}
+                    data-selected={selected}
+                    aria-pressed={selected}
+                    style={
+                      {
+                        "--room-color": meta.color,
+                        "--room-pastel": meta.pastel,
+                      } as React.CSSProperties
+                    }
                     onClick={() => pick(floor, facility)}
                   >
-                    {facility.name}
+                    <span className="room-icon" aria-hidden="true">
+                      {meta.icon}
+                    </span>
+                    <span className="room-name">{facility.name}</span>
                   </button>
                 );
               })}
@@ -136,7 +158,12 @@ export default function BuildingMap({
 
       <div className="building-legend">
         {Object.entries(CATEGORY_META).map(([key, meta]) => (
-          <span className="legend-item" key={key}>
+          <span
+            className="legend-item"
+            key={key}
+            style={{ background: meta.pastel }}
+          >
+            <span aria-hidden="true">{meta.icon}</span>
             <span className="legend-dot" style={{ background: meta.color }} />
             {meta.label}
           </span>

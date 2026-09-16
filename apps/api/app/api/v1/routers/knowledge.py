@@ -45,6 +45,14 @@ class UpdateApprovalRequest(BaseModel):
     is_approved: bool
 
 
+class ChunkPreviewResponse(BaseModel):
+    id: str
+    chunk_index: int
+    heading: str
+    content: str
+    token_count: int
+
+
 class SearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=1000)
     access_scope: str = Field(default="PUBLIC")
@@ -94,6 +102,27 @@ def list_documents(
             )
         )
     return summaries
+
+
+@router.get("/documents/{document_id}/chunks", response_model=list[ChunkPreviewResponse])
+def preview_document_chunks(
+    document_id: str,
+    db: Annotated[Session, Depends(get_db)],
+) -> list[ChunkPreviewResponse]:
+    repo = SqlAlchemyKnowledgeRepository(db)
+    doc = repo.get_document_by_id(document_id)
+    if not doc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    return [
+        ChunkPreviewResponse(
+            id=chunk.id,
+            chunk_index=chunk.chunk_index,
+            heading=chunk.heading,
+            content=chunk.content,
+            token_count=chunk.token_count,
+        )
+        for chunk in doc.chunks
+    ]
 
 
 @router.post("/documents", response_model=DocumentSummaryResponse)
