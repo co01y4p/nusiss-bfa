@@ -5,8 +5,8 @@ incidents without AI, track them through opaque reference codes, or use a struct
 classifies, prioritizes, and routes facility reports. Managers can review the incident queue and the
 full workflow trace.
 
-The implementation covers **M0, M1, M2, M3, M4, and M5** from [the project plan](docs/plan/00-overview.md).
-M6 through M8 remain planned work.
+The implementation covers **M0, M1, M2, M3, M4, M5, and M6** from [the project plan](docs/plan/00-overview.md).
+M7 through M8 remain planned work.
 
 ## Implemented
 
@@ -27,7 +27,6 @@ M6 through M8 remain planned work.
   Supports persistent custom prompt overrides via database (`agent_prompts`), side-by-side diff comparison against built-in
   `v1.yaml` prompts, real-time live testing playground with preloaded facility payloads, latency profiling, and instant factory reset.
 - **M3 (RAG Knowledge Base):** pgvector-backed retrieval-augmented generation (RAG) knowledge base over approved facility
-
   documents, multi-format parsing (.md, .txt, .pdf), heading-aware chunking (~400–800 tokens), hybrid
   vector and keyword search, citation validator verifying cited chunk IDs and claim grounding, refusal
   fallback for unapproved/absent context, CLI ingestion script (`python -m app.scripts.ingest_document`),
@@ -49,6 +48,18 @@ M6 through M8 remain planned work.
   citation validity, and repeated-run consistency. Pull requests run the critical 22-case regression set, while pushes to
   `master` and manual workflow runs execute the complete suite. Aggregate metric gates enforce 100% critical-hazard recall,
   at least 95% prompt-injection resistance, and the documented quality targets under `evals/promptfoo/`.
+- **M6 (Observability & Metrics):**
+  - **Prometheus Metrics (`/metrics`):** comprehensive instrumentation of agent, LLM, and API operations via `prometheus-client`:
+    - `agent_runs_total{agent,status}` & `agent_duration_seconds{agent}`: track execution count and latency percentiles per workflow agent.
+    - `agent_retries_total{agent,reason}`: count transient retry attempts and failure reasons.
+    - `llm_tokens_total{provider,model,type}`: track prompt, completion, and total token usage across providers and models.
+    - `llm_schema_validation_failures_total{agent}`: count structured output parsing and schema mismatches.
+    - `tool_invocations_total{tool,status}`: monitor tool calls and execution status.
+    - `workflow_runs_total{outcome}`: aggregate end-to-end workflow completion states (`completed`, `human_review`, `quarantined`, `error`).
+    - `http_requests_total` & `http_request_duration_seconds`: ASGI middleware tracking request throughput and endpoint latency.
+  - **Structured JSON Logging:** production `StructuredJsonFormatter` emitting key-value JSON logs with PII redaction, credential/secret masking, and strict suppression of forbidden keys (raw chain-of-thought, sensitive authorization tokens).
+  - **Provisioned Grafana Dashboard ("Agent & LLM Ops"):** auto-provisioned 14-panel dashboard in Git (`infra/monitoring/grafana/dashboards/agent-llm-ops.json`) displaying agent duration percentiles, token usage breakdowns, retry spikes, schema validation failure trends, and human escalation rates.
+  - **Docker Observability Profile:** Prometheus (`port 9090`) and Grafana (`port 3001`) services configured under `infra/compose/compose.yml` via `--profile observability`.
 - **Fake LLM & Embeddings:** deterministic local test doubles are available for unit tests and
   development. M5 quality evaluation rejects the fake LLM and requires real provider credentials.
 
@@ -64,6 +75,7 @@ apps/web/          Next.js report, assistant (with live agent flow logging), tra
 apps/web-vanilla/  Existing Cloudflare Workers + D1 M1 prototype
 
 infra/compose/     PostgreSQL/pgvector, Valkey, API, and web services
+infra/monitoring/  Prometheus configuration and Grafana provisioning/dashboards
 docs/plan/         M0-M8 milestone specifications
 .github/workflows/ CI and the existing vanilla portal deployment
 ```
@@ -78,6 +90,17 @@ docker compose -f infra/compose/compose.yml up --build
 
 The web application is available at `http://localhost:3000`, the API at
 `http://localhost:8000`, and OpenAPI documentation at `http://localhost:8000/docs`.
+
+### Observability Stack (Prometheus & Grafana)
+
+To run the observability stack alongside the services:
+
+```bash
+docker compose -f infra/compose/compose.yml --profile observability up -d prometheus grafana
+```
+
+- **Prometheus UI:** `http://localhost:9090` (scrapes API `/metrics`)
+- **Grafana:** `http://localhost:3001` (pre-provisioned with Prometheus datasource and the **"Agent & LLM Ops"** dashboard; default credentials `admin` / `admin`).
 
 Create a manager after the database migration has completed:
 
