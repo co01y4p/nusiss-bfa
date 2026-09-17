@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Langfuse Local Inspector</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: #111827;
+      --card-border: #1f293d;
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --accent: #3b82f6;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --badge-bg: #1e293b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      padding: 24px;
+      line-height: 1.5;
+    }
+    .container { max-width: 1200px; margin: 0 auto; }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--card-border);
+      margin-bottom: 24px;
+    }
+    .logo { display: flex; align-items: center; gap: 12px; }
+    .logo-icon {
+      width: 34px;
+      height: 34px;
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      color: #fff;
+    }
+    h1 { font-size: 20px; font-weight: 700; }
+    .subtitle { color: var(--text-muted); font-size: 13px; }
+    .actions { display: flex; gap: 12px; }
+    button {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      color: var(--text);
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    button:hover { border-color: var(--accent); color: var(--accent); }
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .stat-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .stat-value { font-size: 24px; font-weight: 700; color: #fff; }
+    .stat-label { color: var(--text-muted); font-size: 12px; margin-top: 4px; }
+    .trace-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      margin-bottom: 20px;
+      overflow: hidden;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+    .trace-header {
+      padding: 16px 20px;
+      background: rgba(255,255,255,0.02);
+      border-bottom: 1px solid var(--card-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .trace-title { display: flex; align-items: center; gap: 12px; }
+    .trace-name { font-weight: 600; font-size: 15px; }
+    .badge {
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      background: var(--badge-bg);
+      border: 1px solid var(--card-border);
+    }
+    .badge.finalized { color: var(--success); border-color: rgba(16, 185, 129, 0.3); background: rgba(16, 185, 129, 0.1); }
+    .badge.quarantined { color: var(--danger); border-color: rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.1); }
+    .badge.human_review { color: var(--warning); border-color: rgba(245, 158, 11, 0.3); background: rgba(245, 158, 11, 0.1); }
+    .trace-time { color: var(--text-muted); font-size: 12px; }
+    .trace-body { padding: 20px; }
+    .io-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .io-box {
+      background: #0d131f;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 14px;
+    }
+    .io-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .io-content { font-size: 14px; white-space: pre-wrap; word-break: break-word; }
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin: 16px 0 10px 0;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .observation-item {
+      background: #0d131f;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 14px;
+      margin-bottom: 10px;
+    }
+    .obs-header { display: flex; justify-content: space-between; margin-bottom: 8px; }
+    .obs-name { font-weight: 600; font-size: 14px; color: #60a5fa; }
+    .obs-model {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: #c084fc;
+      background: rgba(192, 132, 252, 0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .code-block {
+      background: #080c14;
+      border: 1px solid #1a2233;
+      border-radius: 6px;
+      padding: 10px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      overflow-x: auto;
+      max-height: 250px;
+    }
+    .empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo">
+        <div class="logo-icon">L</div>
+        <div>
+          <h1>Langfuse Local Inspector</h1>
+          <div class="subtitle">Live LLM Observability & Trace Collector (Port 3002)</div>
+        </div>
+      </div>
+      <div class="actions">
+        <button onclick="loadTraces()">🔄 Refresh</button>
+        <button onclick="clearTraces()">🗑️ Clear Traces</button>
+      </div>
+    </header>
+
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-value" id="total-traces">0</div>
+        <div class="stat-label">Total Traces Captured</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="total-generations">0</div>
+        <div class="stat-label">Agent LLM Generations</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="total-spans">0</div>
+        <div class="stat-label">Workflow Spans</div>
+      </div>
+    </div>
+
+    <div id="traces-list">
+      <div class="empty-state">Loading traces...</div>
+    </div>
+  </div>
+
+  <script>
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    async function loadTraces() {
+      try {
+        const res = await fetch('/api/traces');
+        const data = await res.json();
+        const traces = data.traces || [];
+
+        document.getElementById('total-traces').innerText = traces.length;
+        let totalGens = 0;
+        let totalSpans = 0;
+        traces.forEach(t => {
+          totalGens += (t.generations || []).length;
+          totalSpans += (t.spans || []).length;
+        });
+        document.getElementById('total-generations').innerText = totalGens;
+        document.getElementById('total-spans').innerText = totalSpans;
+
+        const container = document.getElementById('traces-list');
+        if (traces.length === 0) {
+          container.innerHTML = `
+            <div class="empty-state">
+              No traces captured yet.<br>
+              Send a message via the assistant at <a href="http://localhost:3000/assistant" target="_blank" style="color: #3b82f6;">http://localhost:3000/assistant</a> to see live traces.
+            </div>
+          `;
+          return;
+        }
+
+        let html = '';
+        for (const t of traces) {
+          const outcome = (t.output && t.output.outcome) ? t.output.outcome : 'RUNNING';
+          const outcomeClass = outcome.toLowerCase();
+          const refCode = (t.output && t.output.reference_code) ? t.output.reference_code : '';
+          const userMsg = (t.input && t.input.message) ? t.input.message : JSON.stringify(t.input || '');
+          const finalResp = (t.output && t.output.final_response) ? t.output.final_response : JSON.stringify(t.output || '');
+
+          let gensHtml = '';
+          (t.generations || []).forEach(g => {
+            const usageStr = g.usage ? `Tokens: ${g.usage.totalTokens || (g.usage.promptTokens + g.usage.completionTokens) || 'N/A'}` : '';
+            gensHtml += `
+              <div class="observation-item">
+                <div class="obs-header">
+                  <span class="obs-name">${escapeHtml(g.name)}</span>
+                  <div>
+                    <span class="obs-model">${escapeHtml(g.model || 'model')}</span>
+                    ${usageStr ? `<span class="badge" style="margin-left:6px;">${escapeHtml(usageStr)}</span>` : ''}
+                  </div>
+                </div>
+                <div style="font-size:12px; color:#9ca3af; margin-bottom:6px;">Model Output / Parsed Schema:</div>
+                <pre class="code-block">${escapeHtml(typeof g.output === 'object' ? JSON.stringify(g.output, null, 2) : String(g.output || ''))}</pre>
+              </div>
+            `;
+          });
+
+          let spansHtml = '';
+          (t.spans || []).forEach(s => {
+            spansHtml += `
+              <div class="observation-item" style="border-left: 3px solid #3b82f6;">
+                <div class="obs-header">
+                  <span class="obs-name" style="color: #93c5fd;">${escapeHtml(s.name)}</span>
+                  <span class="trace-time">${escapeHtml(s.level || 'DEFAULT')}</span>
+                </div>
+                <pre class="code-block">${escapeHtml(JSON.stringify(s.output || s.metadata || {}, null, 2))}</pre>
+              </div>
+            `;
+          });
+
+          html += `
+            <div class="trace-card">
+              <div class="trace-header">
+                <div class="trace-title">
+                  <span class="trace-name">${escapeHtml(t.name || 'trace')}</span>
+                  <span class="badge ${outcomeClass}">${escapeHtml(outcome)}</span>
+                  ${refCode ? `<span class="badge">Ref: ${escapeHtml(refCode)}</span>` : ''}
+                </div>
+                <span class="trace-time">${escapeHtml(t.timestamp || '')}</span>
+              </div>
+              <div class="trace-body">
+                <div class="io-grid">
+                  <div class="io-box">
+                    <div class="io-title">User Prompt (Input)</div>
+                    <div class="io-content">${escapeHtml(userMsg)}</div>
+                  </div>
+                  <div class="io-box">
+                    <div class="io-title">Final Assistant Response (Output)</div>
+                    <div class="io-content">${escapeHtml(finalResp)}</div>
+                  </div>
+                </div>
+
+                <div class="section-title">Agent LLM Generations (${(t.generations || []).length})</div>
+                ${gensHtml || '<div style="color:#6b7280; font-size:13px;">No generation events</div>'}
+
+                ${(t.spans || []).length > 0 ? `
+                  <div class="section-title">Workflow Spans (${(t.spans || []).length})</div>
+                  ${spansHtml}
+                ` : ''}
+              </div>
+            </div>
+          `;
+        }
+
+        container.innerHTML = html;
+      } catch (err) {
+        console.error('Failed to load traces:', err);
+      }
+    }
+
+    async function clearTraces() {
+      if (confirm('Clear all captured traces?')) {
+        await fetch('/api/traces', { method: 'DELETE' });
+        loadTraces();
+      }
+    }
+
+    loadTraces();
+    setInterval(loadTraces, 3000);
+  </script>
+</body>
+</html>

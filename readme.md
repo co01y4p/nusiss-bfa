@@ -60,6 +60,12 @@ M7 through M8 remain planned work.
   - **Structured JSON Logging:** production `StructuredJsonFormatter` emitting key-value JSON logs with PII redaction, credential/secret masking, and strict suppression of forbidden keys (raw chain-of-thought, sensitive authorization tokens).
   - **Provisioned Grafana Dashboard ("Agent & LLM Ops"):** auto-provisioned 14-panel dashboard in Git (`infra/monitoring/grafana/dashboards/agent-llm-ops.json`) displaying agent duration percentiles, token usage breakdowns, retry spikes, schema validation failure trends, and human escalation rates.
   - **Docker Observability Profile:** Prometheus (`port 9090`) and Grafana (`port 3001`) services configured under `infra/compose/compose.yml` via `--profile observability`.
+  - **Langfuse LLM Tracing & Observability:** deep, non-blocking telemetry capturing complete multi-agent execution graphs:
+    - **Trace Lifecycle:** full root traces per request (`facility-assistant`) linking user prompts, location, outcomes, reference codes, session IDs, and reason codes.
+    - **Agent Generations:** detailed observation events tracking LLM models (e.g. `gpt-5-nano`), sanitized input prompts, model outputs, and exact token usage (prompt, completion, total).
+    - **Workflow Spans:** execution tracking for tools (`create_incident`, `lookup_incident_status`, `find_recent_incidents`), knowledge retrieval, and security guardrail checks.
+    - **Privacy & Defense-in-Depth:** automatic PII redaction on inputs/prompts before sending to Langfuse and suppression of authorization secrets/tokens.
+    - **Cloud & Self-Hosted Ready:** seamlessly works with Langfuse Cloud (`https://cloud.langfuse.com`) or self-hosted instances with graceful, zero-latency no-op fallback when disabled.
 - **Fake LLM & Embeddings:** deterministic local test doubles are available for unit tests and
   development. M5 quality evaluation rejects the fake LLM and requires real provider credentials.
 
@@ -101,6 +107,21 @@ docker compose -f infra/compose/compose.yml --profile observability up -d promet
 
 - **Prometheus UI:** `http://localhost:9090` (scrapes API `/metrics`)
 - **Grafana:** `http://localhost:3001` (pre-provisioned with Prometheus datasource and the **"Agent & LLM Ops"** dashboard; default credentials `admin` / `admin`).
+
+### Langfuse LLM Observability Setup
+
+To view live user inputs, LLM responses, token metrics, and multi-agent execution traces in Langfuse:
+
+1. Sign up for a free account at [cloud.langfuse.com](https://cloud.langfuse.com) (or point to a self-hosted instance).
+2. Create a project and obtain your API credentials (`pk-lf-...` and `sk-lf-...`).
+3. Add the following variables to your `.env` file:
+   ```env
+   LANGFUSE_ENABLED=true
+   LANGFUSE_PUBLIC_KEY=pk-lf-...
+   LANGFUSE_SECRET_KEY=sk-lf-...
+   LANGFUSE_HOST=https://cloud.langfuse.com
+   ```
+4. Restart the API (`docker compose restart api` or restart local dev server). All assistant conversations will immediately stream traces, agent generations, tool calls, and model metadata into your Langfuse project dashboard.
 
 Create a manager after the database migration has completed:
 

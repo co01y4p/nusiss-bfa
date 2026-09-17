@@ -14,6 +14,7 @@ from app.agents.response import ResponseAgent
 from app.agents.review import ReviewAgent
 from app.agents.security import SecurityAgent
 from app.core.config import Settings
+from app.monitoring.langfuse import LangfuseTracer
 from app.monitoring.metrics import record_workflow_run
 from app.rag.citation_validator import CitationValidator
 from app.rag.retriever import KnowledgeRetriever
@@ -55,6 +56,7 @@ class FacilityWorkflow:
         security_events: SecurityEventRepository | None = None,
         output_validator: OutputPolicyValidator | None = None,
         tools: ToolRegistry | None = None,
+        tracer: LangfuseTracer | None = None,
     ) -> None:
         self.settings = settings
         self.incidents = incident_repository
@@ -73,6 +75,7 @@ class FacilityWorkflow:
         self.output_validator = output_validator or OutputPolicyValidator()
         self.injection_detector = PromptInjectionDetector()
         self.tools = tools
+        self.tracer = tracer or LangfuseTracer(settings=settings)
 
     def _check_bounds(self, state: WorkflowState, *, model_call: bool = False) -> None:
         if state.step_count >= self.settings.max_agent_steps:
@@ -93,6 +96,32 @@ class FacilityWorkflow:
     ) -> None:
         self._check_bounds(state)
         state.record(node, output, reason_codes, input=input)
+        if state.trace_ctx and node in {
+            "quarantine",
+            "recent_incident_lookup",
+            "retrieval",
+            "faq_retrieval",
+            "status_lookup",
+            "status_response",
+            "finalize",
+            "human_review",
+        }:
+            state.trace_ctx.log_span(
+                name=f"step:{node}",
+                input_data=input,
+                output_data=output,
+                metadata={"reason_codes": reason_codes},
+            )
+        elif state.trace_ctx and node == "intent":
+            agent_obj = getattr(self, "intent", None)
+            model_name = getattr(agent_obj, "model", self.settings.classifier_model)
+            state.trace_ctx.log_generation(
+                name="agent:intent",
+                model=model_name,
+                input_data=input,
+                output_data=output,
+                metadata={"reason_codes": reason_codes},
+            )
 
     def _record_model_output(
         self,
@@ -110,6 +139,16 @@ class FacilityWorkflow:
             reasons if isinstance(reasons, list) else [],
             input=input,
         )
+        if state.trace_ctx:
+            agent_obj = getattr(self, node, None)
+            model_name = getattr(agent_obj, "model", self.settings.classifier_model)
+            state.trace_ctx.log_generation(
+                name=f"agent:{node}",
+                model=model_name,
+                input_data=input,
+                output_data=data,
+                metadata={"reason_codes": reasons if isinstance(reasons, list) else []},
+            )
 
     def _log_security_event(
         self,
@@ -137,7 +176,18 @@ class FacilityWorkflow:
             raise ValueError("Message must not be empty")
         if len(normalized) > self.settings.max_input_chars:
             raise ValueError("Message exceeds the configured input limit")
-        state = WorkflowState(input_text=normalized, supplied_location=location)
+
+        trace_ctx = self.tracer.start_trace(
+            name="facility-assistant",
+            input_data={"message": normalized, "location": location},
+            metadata={"app_env": self.settings.app_env},
+            tags=[f"env:{self.settings.app_env}"],
+        )
+        state = WorkflowState(
+            input_text=normalized,
+            supplied_location=location,
+            trace_ctx=trace_ctx,
+        )
         try:
             async with asyncio.timeout(self.settings.workflow_timeout_seconds):
                 await self._execute(state)
@@ -150,6 +200,29 @@ class FacilityWorkflow:
                 state.record("human_review", {"error": str(exc)}, ["WORKFLOW_BOUND_REACHED"])
         self._save_run(state)
         record_workflow_run(state.outcome)
+
+        if state.trace_ctx:
+            state.trace_ctx.end(
+                output_data={
+                    "outcome": state.outcome,
+                    "final_response": state.final_response,
+                    "reference_code": state.reference_code,
+                    "incident_id": state.incident_id,
+                },
+                metadata={
+                    "outcome": state.outcome,
+                    "incident_id": state.incident_id,
+                    "reference_code": state.reference_code,
+                    "step_count": state.step_count,
+                    "model_calls": state.model_calls,
+                },
+                tags=[f"outcome:{state.outcome}"],
+            )
+            try:
+                await state.trace_ctx.flush()
+            except Exception as exc:
+                logger.debug("Failed to flush Langfuse trace: %s", exc)
+
         logger.info(
             "Workflow finished with outcome %s",
             state.outcome,

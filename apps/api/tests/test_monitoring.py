@@ -76,9 +76,7 @@ async def test_agent_metrics_recorded_on_success() -> None:
     mock_llm = AsyncMock()
     mock_llm.generate.return_value = DummyAgentOutput(message="hello")
 
-    agent = DummyAgent(
-        mock_llm, model="test-model", timeout_seconds=5, system_prompt="Test prompt"
-    )
+    agent = DummyAgent(mock_llm, model="test-model", timeout_seconds=5, system_prompt="Test prompt")
     before_runs = AGENT_RUNS_TOTAL.labels(agent="dummy_agent", status="success")._value.get()
 
     output = await agent.run({"text": "hi"})
@@ -99,9 +97,7 @@ async def test_agent_metrics_and_schema_failure_recorded_on_fallback() -> None:
     except ValidationError as val_err:
         mock_llm.generate.side_effect = val_err
 
-    agent = DummyAgent(
-        mock_llm, model="test-model", timeout_seconds=5, system_prompt="Test prompt"
-    )
+    agent = DummyAgent(mock_llm, model="test-model", timeout_seconds=5, system_prompt="Test prompt")
     before_fallbacks = AGENT_RUNS_TOTAL.labels(agent="dummy_agent", status="fallback")._value.get()
     before_failures = LLM_SCHEMA_VALIDATION_FAILURES_TOTAL.labels(agent="dummy_agent")._value.get()
 

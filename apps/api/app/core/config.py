@@ -47,6 +47,13 @@ class Settings(BaseSettings):
     evaluation_enabled: bool = False
     evaluation_key: str = ""
 
+    langfuse_enabled: bool = False
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+    langfuse_host: str = "https://cloud.langfuse.com"
+    langfuse_sample_rate: float = 1.0
+    langfuse_debug: bool = False
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [item.strip() for item in self.cors_origins.split(",") if item.strip()]

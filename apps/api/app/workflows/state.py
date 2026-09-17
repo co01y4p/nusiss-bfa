@@ -14,7 +14,9 @@ class TraceStep(StrictAgentModel):
 
 
 class WorkflowState(StrictAgentModel):
-    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+    model_config = ConfigDict(
+        extra="forbid", validate_assignment=True, arbitrary_types_allowed=True
+    )
 
     input_text: str
     supplied_location: str | None = None
@@ -25,6 +27,7 @@ class WorkflowState(StrictAgentModel):
     outcome: str = "RUNNING"
     final_response: str = ""
     trace: list[TraceStep] = Field(default_factory=list)
+    trace_ctx: Any = Field(default=None, exclude=True)
 
     def record(
         self,
