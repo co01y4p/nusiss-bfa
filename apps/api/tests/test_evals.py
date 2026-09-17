@@ -96,6 +96,7 @@ def test_evaluation_endpoint_uses_real_provider_configuration(
         app_env="test",
         llm_provider="openai",
         llm_api_key="test-key",
+        classifier_model="gpt-5-nano",
         evaluation_enabled=True,
         evaluation_key="test-evaluation-key",
     )

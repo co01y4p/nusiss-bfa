@@ -4,6 +4,8 @@ from typing import TypeVar
 
 import httpx
 
+from app.monitoring.metrics import record_agent_retry
+
 T = TypeVar("T")
 
 
@@ -17,12 +19,15 @@ async def with_transient_retries(  # noqa: UP047
         except (TimeoutError, ConnectionError, httpx.TransportError) as exc:
             last_error = exc
             if attempt < retries:
+                record_agent_retry(agent="llm_gateway", reason="TRANSIENT_NETWORK")
                 await asyncio.sleep(base_delay_seconds * (2**attempt))
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code not in {408, 409, 429} and exc.response.status_code < 500:
                 raise
             last_error = exc
             if attempt < retries:
+                reason = "RATE_LIMIT" if exc.response.status_code == 429 else "SERVER_ERROR"
+                record_agent_retry(agent="llm_gateway", reason=reason)
                 await asyncio.sleep(base_delay_seconds * (2**attempt))
     assert last_error is not None
     raise last_error

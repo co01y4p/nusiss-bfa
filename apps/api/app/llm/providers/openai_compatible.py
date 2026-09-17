@@ -13,6 +13,7 @@ from app.llm.gateway import (
     ToolExecutor,
 )
 from app.llm.retry import with_transient_retries
+from app.monitoring.metrics import record_llm_tokens
 from app.security.pii_redaction import redact_payload
 
 
@@ -184,7 +185,9 @@ class OpenAICompatibleStructuredLLM:
                     json=request_body,
                 )
                 response.raise_for_status()
-                content = self._responses_output_text(response.json())
+                payload = response.json()
+                self._record_tokens(payload, model)
+                content = self._responses_output_text(payload)
                 return output_schema.model_validate_json(content)
 
         return await with_transient_retries(send, retries=2)
@@ -226,7 +229,9 @@ class OpenAICompatibleStructuredLLM:
                     json=request_body,
                 )
                 response.raise_for_status()
-                content = response.json()["choices"][0]["message"]["content"]
+                payload = response.json()
+                self._record_tokens(payload, model)
+                content = payload["choices"][0]["message"]["content"]
                 return output_schema.model_validate_json(content)
 
         return await with_transient_retries(send, retries=2)
@@ -452,9 +457,23 @@ class OpenAICompatibleStructuredLLM:
                 )
                 response.raise_for_status()
                 data: dict[str, Any] = response.json()
+                model_name = body.get("model") or "unknown"
+                self._record_tokens(data, model_name)
                 return data
 
         return await with_transient_retries(send, retries=2)
+
+    def _record_tokens(self, data: dict[str, Any], model: str) -> None:
+        usage = data.get("usage") or data.get("usage_metadata") or {}
+        prompt_tokens = usage.get("prompt_tokens") or usage.get("input_tokens") or 0
+        completion_tokens = usage.get("completion_tokens") or usage.get("output_tokens") or 0
+        if prompt_tokens or completion_tokens:
+            record_llm_tokens(
+                provider="openai_compatible",
+                model=model,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+            )
 
     @staticmethod
     def _responses_text_format(output_schema: type[OutputT]) -> dict[str, Any]:

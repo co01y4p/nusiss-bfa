@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import re
 from typing import Any, Protocol
 
@@ -13,6 +14,7 @@ from app.agents.response import ResponseAgent
 from app.agents.review import ReviewAgent
 from app.agents.security import SecurityAgent
 from app.core.config import Settings
+from app.monitoring.metrics import record_workflow_run
 from app.rag.citation_validator import CitationValidator
 from app.rag.retriever import KnowledgeRetriever
 from app.repositories.interfaces.incidents import IncidentRepository, WorkflowRunRepository
@@ -21,6 +23,8 @@ from app.security.output_policy import OutputPolicyValidator
 from app.security.prompt_injection import PromptInjectionDetector
 from app.tools.registry import ToolRegistry
 from app.workflows.state import WorkflowState
+
+logger = logging.getLogger("app.workflows.facility")
 
 
 class WorkflowLimitError(RuntimeError):
@@ -145,6 +149,21 @@ class FacilityWorkflow:
             if state.step_count < self.settings.max_agent_steps:
                 state.record("human_review", {"error": str(exc)}, ["WORKFLOW_BOUND_REACHED"])
         self._save_run(state)
+        record_workflow_run(state.outcome)
+        logger.info(
+            "Workflow finished with outcome %s",
+            state.outcome,
+            extra={
+                "outcome": state.outcome,
+                "user_input": state.input_text,
+                "llm_response": state.final_response,
+                "incident_id": state.incident_id,
+                "reference_code": state.reference_code,
+                "step_count": state.step_count,
+                "model_calls": state.model_calls,
+                "reason_codes": [code for step in state.trace for code in step.reason_codes],
+            },
+        )
         return state
 
     async def _execute(self, state: WorkflowState) -> None:

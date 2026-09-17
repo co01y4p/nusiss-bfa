@@ -2,7 +2,7 @@ import asyncio
 from enum import StrEnum
 from typing import Any
 
-from pydantic import Field
+from pydantic import Field, ValidationError
 
 from app.agents.base import BaseAgent, StrictAgentModel
 from app.llm.gateway import (
@@ -10,6 +10,11 @@ from app.llm.gateway import (
     StructuredLLM,
     ToolCallingError,
     ToolCallingResult,
+)
+from app.monitoring.metrics import (
+    record_agent_retry,
+    record_agent_run,
+    record_schema_validation_failure,
 )
 from app.tools.registry import ToolRegistry
 
@@ -84,6 +89,7 @@ class IntentAgent(BaseAgent[IntentOutput]):
                 max_tool_calls=1,
             )
 
+        start_time = asyncio.get_event_loop().time()
         try:
             async with asyncio.timeout(self.timeout_seconds):
                 result = await call_model(payload)
@@ -101,6 +107,7 @@ class IntentAgent(BaseAgent[IntentOutput]):
                     and attempt < max_attempts
                 ):
                     attempt += 1
+                    record_agent_retry(agent="intent", reason="MISSING_TOOL_CALL")
                     retry_payload = {
                         **payload,
                         "_reminder": (
@@ -133,14 +140,18 @@ class IntentAgent(BaseAgent[IntentOutput]):
                 else:
                     output.incident_id = None
                     output.reference_code = None
+                duration = asyncio.get_event_loop().time() - start_time
+                record_agent_run(self.name, status="success", duration_seconds=duration)
                 return output
         except ToolCallingError as exc:
+            duration = asyncio.get_event_loop().time() - start_time
             self.model_calls = 2
             self.tool_calls = exc.tool_calls
             self.first_model_input = exc.tool_calls[0].model_input if exc.tool_calls else payload
             self.final_model_input = self._build_final_model_input(exc.tool_calls)
             created = self._created_incident(exc.tool_calls)
             if created is not None:
+                record_agent_run(self.name, status="fallback", duration_seconds=duration)
                 return IntentOutput(
                     intent=Intent.INCIDENT_REPORT,
                     incident_id=created["id"],
@@ -148,12 +159,17 @@ class IntentAgent(BaseAgent[IntentOutput]):
                     confidence=0,
                     reason_codes=["TOOL_SUCCEEDED_FINAL_MODEL_OUTPUT_FAILED"],
                 )
+            record_agent_run(self.name, status="fallback", duration_seconds=duration)
             return self.fallback(payload, exc)
         except Exception as exc:
+            duration = asyncio.get_event_loop().time() - start_time
+            if isinstance(exc, ValidationError):
+                record_schema_validation_failure(self.name)
             self.model_calls = 1
             self.tool_calls = []
             self.first_model_input = payload
             self.final_model_input = None
+            record_agent_run(self.name, status="fallback", duration_seconds=duration)
             return self.fallback(payload, exc)
 
     @staticmethod

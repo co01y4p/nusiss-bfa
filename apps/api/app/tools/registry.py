@@ -5,6 +5,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.llm.gateway import FunctionTool
+from app.monitoring.metrics import record_tool_invocation
 
 
 class ToolExecutionResult(BaseModel):
@@ -97,11 +98,17 @@ class ToolRegistry:
         payload: dict[str, Any],
         caller_role: str = "PUBLIC",
     ) -> ToolExecutionResult:
+        def _finish(res: ToolExecutionResult) -> ToolExecutionResult:
+            record_tool_invocation(tool=name, status="success" if res.success else "error")
+            return res
+
         if name not in self._tools:
-            return ToolExecutionResult(
-                success=False,
-                error=f"Tool '{name}' is not in the allow-list registry",
-                reason_codes=["TOOL_NOT_ALLOWLISTED", "UNKNOWN_TOOL"],
+            return _finish(
+                ToolExecutionResult(
+                    success=False,
+                    error=f"Tool '{name}' is not in the allow-list registry",
+                    reason_codes=["TOOL_NOT_ALLOWLISTED", "UNKNOWN_TOOL"],
+                )
             )
 
         tool = self._tools[name]
@@ -113,19 +120,23 @@ class ToolRegistry:
                 f"Caller role '{caller_role}' does not have permission "
                 f"to execute tool '{name}' (requires '{tool.required_role}')"
             )
-            return ToolExecutionResult(
-                success=False,
-                error=err_msg,
-                reason_codes=["INSUFFICIENT_TOOL_PERMISSIONS", "UNAUTHORIZED_TOOL_INVOCATION"],
+            return _finish(
+                ToolExecutionResult(
+                    success=False,
+                    error=err_msg,
+                    reason_codes=["INSUFFICIENT_TOOL_PERMISSIONS", "UNAUTHORIZED_TOOL_INVOCATION"],
+                )
             )
 
         try:
             validated_args = tool.input_schema.model_validate(payload)
         except ValidationError as exc:
-            return ToolExecutionResult(
-                success=False,
-                error=f"Invalid arguments for tool '{name}': {exc.errors()}",
-                reason_codes=["INVALID_TOOL_ARGUMENTS", "SCHEMA_VALIDATION_ERROR"],
+            return _finish(
+                ToolExecutionResult(
+                    success=False,
+                    error=f"Invalid arguments for tool '{name}': {exc.errors()}",
+                    reason_codes=["INVALID_TOOL_ARGUMENTS", "SCHEMA_VALIDATION_ERROR"],
+                )
             )
 
         try:
@@ -134,14 +145,18 @@ class ToolRegistry:
             else:
                 result = tool.handler(validated_args)
 
-            return ToolExecutionResult(
-                success=True,
-                data=result,
-                reason_codes=["TOOL_EXECUTION_SUCCESS"],
+            return _finish(
+                ToolExecutionResult(
+                    success=True,
+                    data=result,
+                    reason_codes=["TOOL_EXECUTION_SUCCESS"],
+                )
             )
         except Exception as exc:
-            return ToolExecutionResult(
-                success=False,
-                error=f"Error executing tool '{name}': {str(exc)}",
-                reason_codes=["TOOL_EXECUTION_FAILED"],
+            return _finish(
+                ToolExecutionResult(
+                    success=False,
+                    error=f"Error executing tool '{name}': {str(exc)}",
+                    reason_codes=["TOOL_EXECUTION_FAILED"],
+                )
             )

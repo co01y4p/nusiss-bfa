@@ -9,6 +9,7 @@ from app.llm.gateway import (
     ToolCallingResult,
     ToolExecutor,
 )
+from app.monitoring.metrics import record_llm_tokens
 
 FakeHandler = Callable[[dict[str, Any]], dict[str, Any]]
 
@@ -40,6 +41,14 @@ class FakeStructuredLLM:
             data = handler
         else:
             data = self._default_response(schema_name, user_payload)
+        prompt_tokens = max(1, len(str(user_payload)) // 4)
+        completion_tokens = max(1, len(str(data)) // 4)
+        record_llm_tokens(
+            provider="fake",
+            model=model,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+        )
         return output_schema.model_validate(data)
 
     async def generate_with_tools(

@@ -1,10 +1,15 @@
 import asyncio
+import time
 from abc import ABC, abstractmethod
 from typing import Any, Generic, TypeVar
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from app.llm.gateway import StructuredLLM
+from app.monitoring.metrics import (
+    record_agent_run,
+    record_schema_validation_failure,
+)
 from app.prompts import load_prompt
 
 
@@ -37,9 +42,10 @@ class BaseAgent(ABC, Generic[AgentOutputT]):  # noqa: UP046
         )
 
     async def run(self, payload: dict[str, Any]) -> AgentOutputT:
+        start_time = time.perf_counter()
         try:
             async with asyncio.timeout(self.timeout_seconds):
-                return await self.llm.generate(
+                output = await self.llm.generate(
                     system_prompt=self.system_prompt,
                     user_payload=payload,
                     output_schema=self.output_schema,
@@ -47,7 +53,14 @@ class BaseAgent(ABC, Generic[AgentOutputT]):  # noqa: UP046
                     temperature=0.0,
                     timeout_seconds=self.timeout_seconds,
                 )
+            duration = time.perf_counter() - start_time
+            record_agent_run(self.name, status="success", duration_seconds=duration)
+            return output
         except Exception as exc:
+            duration = time.perf_counter() - start_time
+            if isinstance(exc, ValidationError):
+                record_schema_validation_failure(self.name)
+            record_agent_run(self.name, status="fallback", duration_seconds=duration)
             return self.fallback(payload, exc)
 
     @abstractmethod
