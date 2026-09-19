@@ -19,6 +19,19 @@ Not tied to any specific university or organization — language throughout uses
 
 Consequently, the frontend is deliberately thin (a report form, an assistant chat, a simple trace/queue view) rather than the multi-dashboard, admin-panel, analytics-suite version of this idea. Those product features are optional stretch goals, not core deliverables.
 
+## AAS Practice Module Baseline Alignment
+
+The architectural philosophy and scope boundaries of this project are directly anchored in the official **[AAS Practice Module Architecture Baseline](../aas-baseline.md)** (answering the 12 module FAQ items):
+- **Bounded in-process multi-agent graph** over distributed A2A microservices.
+- **Commercial/open foundation LLMs** via gateway with prompt engineering and RAG context; no unnecessary fine-tuning.
+- **Empirical Promptfoo evaluation** with strict hazard recall (100%) and injection resistance (>=95%).
+- **Observability-first MLSecOps** with Langfuse and Prometheus; prompt/RAG updates handle drift before model retraining.
+- **Reliability & safety controls**: LLM circuit breakers, rate limiting, and bounded human-in-the-loop fallback.
+- **In-process Typed Tool Registry** with strict RBAC over external MCP IPC overhead.
+- **Dual-mode interface** (non-AI form + conversational assistant) with unified M4 prompt-injection defenses.
+- **Retain current database implementation**: single shared schema (`app/core/models.py`) with existing SQLite/PostgreSQL support via SQLAlchemy and Alembic; no per-agent database complexity.
+- **Single production environment** with dev-prod parity via Docker Compose.
+
 ## Milestones
 
 Each milestone has its own self-contained file: objective, folders touched, deployment artifact, setup/run commands, manual tasks only you can do, and exit criteria.

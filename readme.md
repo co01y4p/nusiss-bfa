@@ -8,6 +8,25 @@ full workflow trace.
 The implementation covers **M0, M1, M2, M3, M4, M5, and M6** from [the project plan](docs/plan/00-overview.md).
 M7 through M8 remain planned work.
 
+## AAS Practice Module Baseline
+
+This project's architecture, design decisions, and trade-offs are grounded in the **[AAS Practice Module Architecture Baseline](docs/aas-baseline.md)** (codifying the 12 official module FAQ questions):
+
+- **1. Multi-Agent Architecture:** Bounded in-process graph (`apps/api/app/workflows/facility_graph.py`) orchestrated with specialized agents; non-distributed by design to avoid network partitioning and latency.
+- **2. Model Selection & Fine-Tuning:** Uses foundation models via OpenAI/OpenRouter APIs; fine-tuning is omitted in favor of few-shot prompt engineering and pgvector RAG context.
+- **3. Model Evaluation:** Systematic 92-case Promptfoo suite (`evals/promptfoo/`) enforcing 100% critical hazard recall, >=95% prompt injection resistance, and strict schema validity.
+- **4. MLSecOps & Data Drift:** Real-time observability via Langfuse and Prometheus; prompt updates via Prompt Studio (`/prompts`) and RAG re-indexing over model fine-tuning.
+- **5. Scalability & Reliability:** Stateless API scaling, Valkey sliding-window rate limiting, LLM Circuit Breaker, and deterministic fallback to human review (`review`).
+- **6. Tool Integration & MCP:** Direct in-process typed Tool Registry (`ToolRegistry`) with Pydantic validation and RBAC; avoids unnecessary external MCP IPC overhead.
+- **7. Knowledge Management:** pgvector-backed RAG with heading-aware chunking and strict citation validation refusing ungrounded claims; avoids Knowledge Graph complexity.
+- **8. Web Application Scope:** Pragmatic Next.js UI (`apps/web/`) serving as an operational harness for incident management, live agent trace visualization, and prompt/knowledge administration.
+- **9. Form vs Chatbot Interface:** Dual-mode architecture providing a non-AI "save-before-AI" form (`/report`) alongside an interactive conversational assistant (`/assistant`), both protected by M4 security guardrails.
+- **10. Database Architecture:** Stick with current shared database implementation (SQLAlchemy ORM + Alembic migrations, supporting existing SQLite and PostgreSQL/pgvector). No per-agent databases.
+- **11. Environments:** Single production environment deployed via Docker Compose (`compose.prod.yml`) behind Caddy reverse proxy with dev-prod parity.
+- **12. RAG Scope:** Fully implemented in Milestone M3 (`apps/api/app/rag/`) grounding building policy inquiries (HVAC, operating hours, emergency procedures).
+
+For complete technical specifications and justifications, see **[docs/aas-baseline.md](docs/aas-baseline.md)**.
+
 ## Implemented
 
 - **M0 (Harness Scaffold):** FastAPI, Next.js, PostgreSQL/pgvector, Valkey, Docker Compose, health checks, and CI.
