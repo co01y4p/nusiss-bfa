@@ -102,13 +102,24 @@ class SqlAlchemyIncidentRepository:
             return None
         return _to_domain(row, intent=_latest_intents(self.session, [row.id]).get(row.id))
 
-    def list_recent(self, *, limit: int = 200, offset: int = 0) -> list[Incident]:
-        rows = self.session.scalars(
-            select(IncidentModel)
-            .order_by(IncidentModel.created_at.desc())
-            .limit(limit)
-            .offset(offset)
-        ).all()
+    def list_recent(
+        self,
+        *,
+        limit: int = 200,
+        offset: int = 0,
+        requires_human_review: bool | None = None,
+        status: str | None = None,
+        priority: str | None = None,
+    ) -> list[Incident]:
+        stmt = select(IncidentModel)
+        if requires_human_review is not None:
+            stmt = stmt.where(IncidentModel.requires_human_review == requires_human_review)
+        if status is not None:
+            stmt = stmt.where(IncidentModel.status == status)
+        if priority is not None:
+            stmt = stmt.where(IncidentModel.priority == priority)
+        stmt = stmt.order_by(IncidentModel.created_at.desc()).limit(limit).offset(offset)
+        rows = self.session.scalars(stmt).all()
         intents = _latest_intents(self.session, [row.id for row in rows])
         return [_to_domain(row, intent=intents.get(row.id)) for row in rows]
 
@@ -152,6 +163,7 @@ class SqlAlchemyIncidentRepository:
         priority: str,
         assigned_team: str,
         requires_human_review: bool,
+        reason: str | None = None,
     ) -> Incident | None:
         row = self.session.get(IncidentModel, incident_id)
         if row is None:
@@ -161,6 +173,8 @@ class SqlAlchemyIncidentRepository:
         row.priority = priority
         row.assigned_team = assigned_team
         row.requires_human_review = requires_human_review
+        if reason:
+            row.override_reason = reason
         row.updated_at = datetime.now(UTC)
         self.session.commit()
         self.session.refresh(row)

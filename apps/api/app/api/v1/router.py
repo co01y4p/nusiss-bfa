@@ -9,6 +9,7 @@ from app.api.v1.routers import (
     incidents,
     knowledge,
     prompts,
+    security,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -20,3 +21,4 @@ api_router.include_router(knowledge.router)
 api_router.include_router(facilities.router)
 api_router.include_router(prompts.router)
 api_router.include_router(evals.router)
+api_router.include_router(security.router)

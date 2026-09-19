@@ -11,6 +11,7 @@ from app.domain.incidents.models import (
     IncidentList,
     IncidentTracked,
     StatusUpdate,
+    TriageUpdate,
 )
 from app.repositories.postgres.incidents import SqlAlchemyIncidentRepository
 from app.security.authentication import CurrentUser, require_manager
@@ -55,9 +56,20 @@ def list_incidents(
     manager: Annotated[CurrentUser, Depends(require_manager)],
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
+    requires_review: Annotated[bool | None, Query()] = None,
+    status_filter: Annotated[str | None, Query(alias="status")] = None,
+    priority: Annotated[str | None, Query()] = None,
 ) -> IncidentList:
     del manager
-    return IncidentList(incidents=repository(db).list_recent(limit=limit, offset=offset))
+    return IncidentList(
+        incidents=repository(db).list_recent(
+            limit=limit,
+            offset=offset,
+            requires_human_review=requires_review,
+            status=status_filter,
+            priority=priority,
+        )
+    )
 
 
 @router.patch("/{incident_id}/status", response_model=Incident)
@@ -74,6 +86,28 @@ def update_incident_status(
         )
     except InvalidStatusTransitionError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    if incident is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Incident not found")
+    return incident
+
+
+@router.patch("/{incident_id}/triage", response_model=Incident)
+def update_incident_triage(
+    incident_id: str,
+    body: TriageUpdate,
+    db: Annotated[Session, Depends(get_db)],
+    manager: Annotated[CurrentUser, Depends(require_manager)],
+) -> Incident:
+    del manager
+    incident = IncidentService(repository(db)).update_triage(
+        incident_id,
+        category=body.category,
+        priority=body.priority,
+        assigned_team=body.assigned_team,
+        location=body.location,
+        requires_human_review=body.requires_human_review,
+        reason=body.reason,
+    )
     if incident is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Incident not found")
     return incident

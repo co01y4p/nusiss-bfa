@@ -33,8 +33,23 @@ class InMemoryIncidentRepository:
             None,
         )
 
-    def list_recent(self, *, limit: int = 200, offset: int = 0) -> list[Incident]:
-        return list(self.items.values())[offset : offset + limit]
+    def list_recent(
+        self,
+        *,
+        limit: int = 200,
+        offset: int = 0,
+        requires_human_review: bool | None = None,
+        status: str | None = None,
+        priority: str | None = None,
+    ) -> list[Incident]:
+        items = list(self.items.values())
+        if requires_human_review is not None:
+            items = [item for item in items if item.requires_human_review == requires_human_review]
+        if status is not None:
+            items = [item for item in items if item.status.value == status]
+        if priority is not None:
+            items = [item for item in items if item.priority == priority]
+        return items[offset : offset + limit]
 
     def find_similar(
         self,
@@ -78,20 +93,22 @@ class InMemoryIncidentRepository:
         priority: str,
         assigned_team: str,
         requires_human_review: bool,
+        reason: str | None = None,
     ) -> Incident | None:
         incident = self.items.get(incident_id)
         if incident is None:
             return None
-        updated = incident.model_copy(
-            update={
-                "location": location,
-                "category": category,
-                "priority": priority,
-                "assigned_team": assigned_team,
-                "requires_human_review": requires_human_review,
-                "updated_at": datetime.now(UTC),
-            }
-        )
+        updates: dict[str, Any] = {
+            "location": location,
+            "category": category,
+            "priority": priority,
+            "assigned_team": assigned_team,
+            "requires_human_review": requires_human_review,
+            "updated_at": datetime.now(UTC),
+        }
+        if reason:
+            updates["override_reason"] = reason
+        updated = incident.model_copy(update=updates)
         self.items[incident_id] = updated
         return updated
 

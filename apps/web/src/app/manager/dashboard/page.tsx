@@ -112,10 +112,27 @@ type Incident = {
   created_at: string;
 };
 
+type SecurityEvent = {
+  id: string;
+  event_type: string;
+  severity: string;
+  source_ip: string | null;
+  input_text: string | null;
+  details: Record<string, unknown>;
+  reason_codes: string[];
+  created_at: string;
+};
+
 export default function ManagerDashboardPage() {
   const router = useRouter();
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [error, setError] = useState("");
+  const [filterTab, setFilterTab] = useState<
+    "ALL" | "NEEDS_REVIEW" | "URGENT" | "IN_PROGRESS" | "RESOLVED"
+  >("ALL");
+  const [securityModalOpen, setSecurityModalOpen] = useState(false);
+  const [securityEvents, setSecurityEvents] = useState<SecurityEvent[]>([]);
+  const [loadingSecurity, setLoadingSecurity] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -141,6 +158,27 @@ export default function ManagerDashboardPage() {
     const task = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(task);
   }, [load]);
+
+  const loadSecurityEvents = useCallback(async () => {
+    setLoadingSecurity(true);
+    try {
+      const data = await apiRequest<{ events: SecurityEvent[] }>(
+        "/security/events?limit=50",
+        {
+          headers: managerHeaders(),
+        },
+      );
+      setSecurityEvents(data.events);
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Failed to load safety audit logs",
+      );
+    } finally {
+      setLoadingSecurity(false);
+    }
+  }, []);
 
   const [statusDialog, setStatusDialog] = useState<{
     incident: Incident;
@@ -184,10 +222,54 @@ export default function ManagerDashboardPage() {
     router.push("/manager");
   }
 
+  const needsReviewCount = incidents.filter(
+    (i) =>
+      i.requires_human_review &&
+      (i.status === "RECEIVED" || !i.override_reason),
+  ).length;
+  const urgentCount = incidents.filter(
+    (i) => i.priority === "P1" || i.priority === "P2",
+  ).length;
+  const inProgressCount = incidents.filter(
+    (i) => i.status === "IN_PROGRESS",
+  ).length;
+  const resolvedCount = incidents.filter(
+    (i) => i.status === "RESOLVED" || i.status === "CLOSED",
+  ).length;
+
+  const filteredIncidents = incidents.filter((incident) => {
+    if (filterTab === "NEEDS_REVIEW") {
+      return (
+        incident.requires_human_review &&
+        (incident.status === "RECEIVED" || !incident.override_reason)
+      );
+    }
+    if (filterTab === "URGENT") {
+      return incident.priority === "P1" || incident.priority === "P2";
+    }
+    if (filterTab === "IN_PROGRESS") {
+      return incident.status === "IN_PROGRESS";
+    }
+    if (filterTab === "RESOLVED") {
+      return incident.status === "RESOLVED" || incident.status === "CLOSED";
+    }
+    return true;
+  });
+
   return (
     <section className="card card-wide">
       <div className="actions">
         <h1>Incident queue</h1>
+        <button
+          type="button"
+          className="button-secondary"
+          onClick={() => {
+            setSecurityModalOpen(true);
+            void loadSecurityEvents();
+          }}
+        >
+          Safety &amp; Audit Log
+        </button>
         <Link className="button-link button-secondary" href="/manager/building">
           Building setup
         </Link>
@@ -236,6 +318,82 @@ export default function ManagerDashboardPage() {
         </div>
       </div>
 
+      <div
+        style={{
+          display: "flex",
+          gap: "0.5rem",
+          flexWrap: "wrap",
+          margin: "1.25rem 0 1rem 0",
+        }}
+      >
+        <button
+          type="button"
+          className={filterTab === "ALL" ? "" : "button-secondary"}
+          onClick={() => setFilterTab("ALL")}
+          style={{
+            width: "auto",
+            fontSize: "0.85rem",
+            padding: "0.4rem 0.8rem",
+          }}
+        >
+          All ({incidents.length})
+        </button>
+        <button
+          type="button"
+          className={filterTab === "NEEDS_REVIEW" ? "" : "button-secondary"}
+          onClick={() => setFilterTab("NEEDS_REVIEW")}
+          style={{
+            width: "auto",
+            fontSize: "0.85rem",
+            padding: "0.4rem 0.8rem",
+            borderColor: needsReviewCount > 0 ? "var(--danger)" : undefined,
+            color:
+              filterTab !== "NEEDS_REVIEW" && needsReviewCount > 0
+                ? "var(--danger)"
+                : undefined,
+            fontWeight: needsReviewCount > 0 ? 700 : 500,
+          }}
+        >
+          Needs Review ({needsReviewCount})
+        </button>
+        <button
+          type="button"
+          className={filterTab === "URGENT" ? "" : "button-secondary"}
+          onClick={() => setFilterTab("URGENT")}
+          style={{
+            width: "auto",
+            fontSize: "0.85rem",
+            padding: "0.4rem 0.8rem",
+          }}
+        >
+          Urgent P1/P2 ({urgentCount})
+        </button>
+        <button
+          type="button"
+          className={filterTab === "IN_PROGRESS" ? "" : "button-secondary"}
+          onClick={() => setFilterTab("IN_PROGRESS")}
+          style={{
+            width: "auto",
+            fontSize: "0.85rem",
+            padding: "0.4rem 0.8rem",
+          }}
+        >
+          In Progress ({inProgressCount})
+        </button>
+        <button
+          type="button"
+          className={filterTab === "RESOLVED" ? "" : "button-secondary"}
+          onClick={() => setFilterTab("RESOLVED")}
+          style={{
+            width: "auto",
+            fontSize: "0.85rem",
+            padding: "0.4rem 0.8rem",
+          }}
+        >
+          Resolved ({resolvedCount})
+        </button>
+      </div>
+
       <div className="table-wrap">
         <table>
           <thead>
@@ -251,14 +409,16 @@ export default function ManagerDashboardPage() {
             </tr>
           </thead>
           <tbody>
-            {incidents.length === 0 && (
+            {filteredIncidents.length === 0 && (
               <tr>
                 <td className="empty-row" colSpan={8}>
-                  No incidents yet.
+                  {incidents.length === 0
+                    ? "No incidents yet."
+                    : "No incidents matching current filter."}
                 </td>
               </tr>
             )}
-            {incidents.map((incident) => (
+            {filteredIncidents.map((incident) => (
               <tr key={incident.id}>
                 <td>
                   <strong>{incident.reference_code}</strong>
@@ -290,9 +450,27 @@ export default function ManagerDashboardPage() {
                       Unclassified
                     </span>
                   )}
-                  {incident.requires_human_review && (
-                    <div className="review-flag">Needs review</div>
-                  )}
+                  {incident.requires_human_review &&
+                  (incident.status === "RECEIVED" ||
+                    !incident.override_reason) ? (
+                    <div
+                      className="review-flag"
+                      title="Action required: Human review triggered by policy"
+                    >
+                      Needs review
+                    </div>
+                  ) : incident.requires_human_review ? (
+                    <div
+                      style={{
+                        fontSize: "0.75rem",
+                        color: "var(--success)",
+                        marginTop: 2,
+                        fontWeight: 600,
+                      }}
+                    >
+                      Reviewed
+                    </div>
+                  ) : null}
                 </td>
                 <td>
                   {incident.priority ? (
@@ -482,6 +660,153 @@ export default function ManagerDashboardPage() {
               >
                 {isUpdating ? "Saving..." : "Confirm Override"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {securityModalOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="security-modal-title"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.6)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: 16,
+          }}
+        >
+          <div
+            className="card card-wide"
+            style={{
+              maxWidth: 880,
+              width: "100%",
+              maxHeight: "85vh",
+              display: "flex",
+              flexDirection: "column",
+              margin: 0,
+              boxShadow: "0 20px 40px rgba(0,0,0,0.25)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 16,
+              }}
+            >
+              <div>
+                <h2 id="security-modal-title" style={{ margin: 0 }}>
+                  Safety &amp; Audit Interventions
+                </h2>
+                <p
+                  style={{
+                    margin: "4px 0 0",
+                    color: "var(--muted)",
+                    fontSize: "0.85rem",
+                  }}
+                >
+                  Immutable audit log of prompt injections, indirect RAG
+                  threats, and policy quarantines.
+                </p>
+              </div>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={() => void loadSecurityEvents()}
+                  disabled={loadingSecurity}
+                  style={{
+                    width: "auto",
+                    padding: "0.4rem 0.8rem",
+                    fontSize: "0.85rem",
+                  }}
+                >
+                  {loadingSecurity ? "Refreshing..." : "Refresh"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSecurityModalOpen(false)}
+                  style={{
+                    width: "auto",
+                    padding: "0.4rem 0.8rem",
+                    fontSize: "0.85rem",
+                  }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+            <div
+              className="table-wrap"
+              style={{ overflowY: "auto", flex: 1, maxHeight: "60vh" }}
+            >
+              <table>
+                <thead>
+                  <tr>
+                    <th>Timestamp</th>
+                    <th>Event Type</th>
+                    <th>Severity</th>
+                    <th>Reasons / Flags</th>
+                    <th>Sanitized Input</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {securityEvents.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="empty-row">
+                        {loadingSecurity
+                          ? "Loading safety logs..."
+                          : "No security interventions recorded."}
+                      </td>
+                    </tr>
+                  )}
+                  {securityEvents.map((evt) => (
+                    <tr key={evt.id}>
+                      <td style={{ fontSize: "0.8rem", whiteSpace: "nowrap" }}>
+                        {new Date(evt.created_at).toLocaleString()}
+                      </td>
+                      <td>
+                        <strong>{evt.event_type}</strong>
+                      </td>
+                      <td>
+                        <span
+                          className="badge"
+                          style={{
+                            color:
+                              evt.severity === "HIGH" ? "#b42318" : "#a15c00",
+                            background:
+                              evt.severity === "HIGH" ? "#fef3f2" : "#fef8ee",
+                          }}
+                        >
+                          <span className="badge-dot" />
+                          {evt.severity}
+                        </span>
+                      </td>
+                      <td style={{ fontSize: "0.8rem" }}>
+                        {evt.reason_codes.join(", ") || "—"}
+                      </td>
+                      <td
+                        style={{
+                          fontSize: "0.8rem",
+                          maxWidth: 260,
+                          wordBreak: "break-word",
+                        }}
+                      >
+                        {evt.input_text || "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

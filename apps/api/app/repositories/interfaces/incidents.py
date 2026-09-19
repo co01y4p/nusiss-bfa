@@ -11,7 +11,15 @@ class IncidentRepository(Protocol):
 
     def get_by_reference(self, reference_code: str) -> Incident | None: ...
 
-    def list_recent(self, *, limit: int = 200, offset: int = 0) -> list[Incident]: ...
+    def list_recent(
+        self,
+        *,
+        limit: int = 200,
+        offset: int = 0,
+        requires_human_review: bool | None = None,
+        status: str | None = None,
+        priority: str | None = None,
+    ) -> list[Incident]: ...
 
     def find_similar(
         self,
@@ -33,6 +41,7 @@ class IncidentRepository(Protocol):
         priority: str,
         assigned_team: str,
         requires_human_review: bool,
+        reason: str | None = None,
     ) -> Incident | None: ...
 
     def mark_requires_human_review(self, incident_id: str) -> None: ...

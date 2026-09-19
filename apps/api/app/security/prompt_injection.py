@@ -19,14 +19,18 @@ class PromptInjectionDetector:
 
     # High severity patterns (immediate high risk >= 0.8)
     DIRECT_OVERRIDE_PATTERNS: ClassVar[list[tuple[str, str, float]]] = [
-        (r"ignore\s+(all\s+)?(previous|prior|above)\s+instructions?", "INSTRUCTION_OVERRIDE", 0.95),
         (
-            r"disregard\s+(all\s+)?(previous|prior|above)\s+(instructions?|rules?)",
+            r"ignore\s+(all\s+)?(previous\s+|prior\s+|above\s+|your\s+|earlier\s+)?instructions?",
             "INSTRUCTION_OVERRIDE",
             0.95,
         ),
         (
-            r"forget\s+(all\s+)?(previous|prior|your)\s+(instructions?|rules?|prompts?)",
+            r"disregard\s+(all\s+)?(previous\s+|prior\s+|above\s+|your\s+|earlier\s+)?(instructions?|rules?)",
+            "INSTRUCTION_OVERRIDE",
+            0.95,
+        ),
+        (
+            r"forget\s+(all\s+)?(previous\s+|prior\s+|above\s+|your\s+|earlier\s+)?(instructions?|rules?|prompts?)",
             "INSTRUCTION_OVERRIDE",
             0.95,
         ),

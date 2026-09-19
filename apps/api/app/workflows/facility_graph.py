@@ -161,11 +161,13 @@ class FacilityWorkflow:
     ) -> None:
         if self.security_events:
             try:
+                redacted_input = redact_pii(input_text).redacted_text if input_text else None
+                redacted_details = redact_payload(details)
                 self.security_events.record(
                     event_type=event_type,
                     severity=severity,
-                    input_text=input_text,
-                    details=details,
+                    input_text=redacted_input,
+                    details=redacted_details,
                     reason_codes=reason_codes,
                 )
             except Exception:

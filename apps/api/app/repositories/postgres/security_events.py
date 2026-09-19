@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.models import SecurityEventModel
 from app.repositories.interfaces.security import SecurityEventRepository
+from app.security.pii_redaction import redact_payload, redact_pii
 
 
 class PostgresSecurityEventRepository(SecurityEventRepository):
@@ -21,12 +22,14 @@ class PostgresSecurityEventRepository(SecurityEventRepository):
         details: dict[str, Any] | None = None,
         reason_codes: list[str] | None = None,
     ) -> SecurityEventModel:
+        clean_input = redact_pii(input_text).redacted_text if input_text else None
+        clean_details = redact_payload(details) if details else {}
         event = SecurityEventModel(
             event_type=event_type,
             severity=severity,
             source_ip=source_ip,
-            input_text=input_text,
-            details=details or {},
+            input_text=clean_input,
+            details=clean_details,
             reason_codes=reason_codes or [],
         )
         self.db.add(event)

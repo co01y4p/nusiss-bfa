@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -55,5 +56,29 @@ class StatusUpdate(StrictModel):
     reason: str = Field(min_length=1, max_length=500)
 
 
+class TriageUpdate(StrictModel):
+    category: str | None = Field(default=None, max_length=120)
+    priority: str | None = Field(default=None, max_length=10)
+    assigned_team: str | None = Field(default=None, max_length=120)
+    location: str | None = Field(default=None, max_length=200)
+    requires_human_review: bool | None = None
+    reason: str = Field(min_length=1, max_length=500)
+
+
 class IncidentList(StrictModel):
     incidents: list[Incident]
+
+
+class SecurityEvent(StrictModel):
+    id: str
+    event_type: str
+    severity: str
+    source_ip: str | None = None
+    input_text: str | None = None
+    details: dict[str, Any] = Field(default_factory=dict)
+    reason_codes: list[str] = Field(default_factory=list)
+    created_at: datetime
+
+
+class SecurityEventList(StrictModel):
+    events: list[SecurityEvent]
