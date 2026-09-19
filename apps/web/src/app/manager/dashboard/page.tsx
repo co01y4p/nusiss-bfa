@@ -401,16 +401,26 @@ export default function ManagerDashboardPage() {
               boxShadow: "0 20px 40px rgba(0,0,0,0.2)",
             }}
           >
-            <h3 id="status-dialog-title" style={{ marginTop: 0, marginBottom: 12 }}>
+            <h3
+              id="status-dialog-title"
+              style={{ marginTop: 0, marginBottom: 12 }}
+            >
               Update Status: {statusDialog.incident.reference_code}
             </h3>
-            <p style={{ color: "var(--muted)", fontSize: "0.95rem", marginBottom: 16 }}>
+            <p
+              style={{
+                color: "var(--muted)",
+                fontSize: "0.95rem",
+                marginBottom: 16,
+              }}
+            >
               Transition status from{" "}
               <strong>{statusDialog.incident.status}</strong> to{" "}
               <strong style={{ color: "var(--brand)" }}>
                 {statusDialog.targetStatus}
               </strong>
-              . A documented reason is required for human oversight and auditability.
+              . A documented reason is required for human oversight and
+              auditability.
             </p>
             <label
               htmlFor="status-reason-input"
@@ -443,7 +453,9 @@ export default function ManagerDashboardPage() {
               }}
               autoFocus
             />
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
+            <div
+              style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}
+            >
               <button
                 type="button"
                 className="button-secondary"
