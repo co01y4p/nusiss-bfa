@@ -6,8 +6,10 @@
   "scripts": {
     "eval:critical": "promptfoo eval -c promptfooconfig.yaml --filter-metadata tier=critical --no-cache -o results-critical.json",
     "eval:full": "promptfoo eval -c promptfooconfig.yaml --no-cache -o results-full.json",
+    "eval:bias": "promptfoo eval -c promptfooconfig.yaml --filter-metadata dimension --no-cache -o results-bias.json",
     "metrics:critical": "node scripts/check_metrics.mjs results-critical.json",
-    "metrics:full": "node scripts/check_metrics.mjs results-full.json"
+    "metrics:full": "node scripts/check_metrics.mjs results-full.json",
+    "metrics:bias": "node scripts/check_metrics.mjs results-bias.json"
   },
   "devDependencies": {
     "promptfoo": "0.122.2"

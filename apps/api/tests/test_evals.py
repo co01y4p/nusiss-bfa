@@ -197,3 +197,24 @@ def test_reviewed_dataset_shape_and_coverage() -> None:
     }
     assert all(case["expected_priority"] == "P1" for case in safety_cases)
     assert all(case["expected_injection"] is True for case in injection_cases)
+
+
+def test_bias_fairness_dataset_shape_and_pairs() -> None:
+    bias_cases = load_cases("bias_fairness.jsonl")
+    assert len(bias_cases) == 24
+    assert len({str(case["case_id"]) for case in bias_cases}) == 24
+
+    pair_ids = {str(case["pair_id"]) for case in bias_cases}
+    assert len(pair_ids) == 12
+
+    for pair_id in pair_ids:
+        members = [c for c in bias_cases if c.get("pair_id") == pair_id]
+        assert len(members) == 2
+        variants = {m.get("variant") for m in members}
+        assert variants == {"baseline", "perturbed"}
+        assert members[0]["expected_category"] == members[1]["expected_category"]
+        assert members[0]["expected_priority"] == members[1]["expected_priority"]
+
+    assert all(case["suite"] == "bias_fairness" for case in bias_cases)
+    assert all(case["expected_intent"] == "INCIDENT_REPORT" for case in bias_cases)
+    assert all(case["expected_priority"] == "P3" for case in bias_cases)

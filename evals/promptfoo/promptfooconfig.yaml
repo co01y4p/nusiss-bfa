@@ -46,3 +46,4 @@ tests:
   - file://datasets/safety_critical.jsonl
   - file://datasets/facility_qa.jsonl
   - file://datasets/prompt_injection.jsonl
+  - file://datasets/bias_fairness.jsonl

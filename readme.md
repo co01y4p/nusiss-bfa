@@ -5,8 +5,8 @@ incidents without AI, track them through opaque reference codes, or use a struct
 classifies, prioritizes, and routes facility reports. Managers can review the incident queue and the
 full workflow trace.
 
-The implementation covers **M0, M1, M2, M3, M4, M5, and M6** from [the project plan](docs/plan/00-overview.md).
-M7 through M8 remain planned work.
+The implementation covers **M0, M1, M2, M3, M4, M5, M6, and M8** from [the project plan](docs/plan/00-overview.md).
+M7 remains planned deployment work.
 
 ## AAS Practice Module Baseline
 
@@ -85,6 +85,11 @@ For complete technical specifications and justifications, see **[docs/aas-baseli
     - **Workflow Spans:** execution tracking for tools (`create_incident`, `lookup_incident_status`, `find_recent_incidents`), knowledge retrieval, and security guardrail checks.
     - **Privacy & Defense-in-Depth:** automatic PII redaction on inputs/prompts before sending to Langfuse and suppression of authorization secrets/tokens.
     - **Cloud & Self-Hosted Ready:** seamlessly works with Langfuse Cloud (`https://cloud.langfuse.com`) or self-hosted instances with graceful, zero-latency no-op fallback when disabled.
+- **M8 (Responsible AI, Human Oversight & Bias Testing):**
+  - **Responsible-AI Impact Assessment:** comprehensive analysis of 7 concrete real-world harm categories and engineering mitigations ([`docs/responsible-ai/impact-assessment.md`](docs/responsible-ai/impact-assessment.md)).
+  - **Human-in-the-Loop Oversight Controls:** mandatory documented override justifications (`override_reason`, 1–500 chars) for manager state transitions, preserving immutable AI traces in `workflow_runs.trace` alongside human operational notes.
+  - **Bias & Fairness Testing Framework:** dedicated testing suite ([`docs/responsible-ai/bias-testing.md`](docs/responsible-ai/bias-testing.md)) evaluating counterfactual perturbation invariance (PIR $\ge 95\%$), socio-linguistic equity (0% false-positive injection rate on Singlish), demographic role parity, spatial prestige neutrality, and accessibility floor protection across unit tests (`test_bias_testing.py`) and a 24-case Promptfoo benchmark (`bias_fairness.jsonl`).
+  - **9-Scenario Live Demonstration Script:** complete presenter walkthrough ([`docs/responsible-ai/demo-script.md`](docs/responsible-ai/demo-script.md)) covering emergency P1 overrides, adversarial defense, grounded citations, PII sanitization, status override accountability, and algorithmic fairness invariance.
 - **Fake LLM & Embeddings:** deterministic local test doubles are available for unit tests and
   development. M5 quality evaluation rejects the fake LLM and requires real provider credentials.
 

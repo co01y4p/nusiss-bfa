@@ -25,6 +25,7 @@ EvaluationSuite = Literal[
     "safety_critical",
     "facility_qa",
     "prompt_injection",
+    "bias_fairness",
 ]
 
 MODEL_FALLBACK_REASON_CODES = {
@@ -143,7 +144,7 @@ async def evaluate_case_once(
             reason_codes=output.reason_codes,
         )
 
-    if body.suite in {"incidents", "safety_critical"}:
+    if body.suite in {"incidents", "safety_critical", "bias_fairness"}:
         payload = {"text": body.message, "location": body.location}
         extraction = await ExtractionAgent(
             llm, model=classifier_model, timeout_seconds=timeout

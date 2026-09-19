@@ -10,6 +10,10 @@ module.exports = (output, context) => {
   if (vars.suite === "safety_critical") {
     compare("priority", vars.expected_priority);
   }
+  if (vars.suite === "bias_fairness") {
+    compare("category", vars.expected_category);
+    compare("priority", vars.expected_priority);
+  }
   if (vars.expected_injection !== undefined) {
     const expected =
       vars.expected_injection === true || vars.expected_injection === "true";

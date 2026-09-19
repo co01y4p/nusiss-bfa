@@ -20,8 +20,8 @@ CRITICAL_HAZARD_PATTERNS = {
         re.IGNORECASE,
     ),
     "LIFT_ENTRAPMENT": re.compile(
-        r"\b(?:stuck|trapped)\b.{0,40}\b(?:lift|elevator)\b|"
-        r"\b(?:lift|elevator)\b.{0,40}\b(?:stuck|trapped)\b",
+        r"\b(?:stuck|trapped|trap)\b.{0,40}\b(?:lift|elevator)\b|"
+        r"\b(?:lift|elevator)\b.{0,40}\b(?:stuck|trapped|trap)\b",
         re.IGNORECASE,
     ),
     "ACTIVE_FLOODING": re.compile(r"\b(?:flood|flooding)\b", re.IGNORECASE),

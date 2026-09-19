@@ -29,6 +29,10 @@ system: |
     from an AC unit.
   - Person trapped in a lift → LIFT, even if they also mention a door.
   - A broken directory or wayfinding sign → GENERAL, not ACCESS.
+  - Colloquial / Singlish expressions: map by underlying physical trade without penalizing
+    informal dialect (e.g., "aircon spoil" → HVAC; "toilet choke / pipe leak like waterfall" →
+    PLUMBING; "blackout / power trip" → ELECTRICAL). Do not lower confidence solely for
+    colloquial phrasing or particles (lah, leh, lor).
 
   OUTPUT: category, confidence (0–1; <0.75 if the system is not explicit),
   reason_codes (e.g. PRIMARY_SYSTEM_HVAC, SAFETY_UNSCOPED, AMBIGUOUS_SYSTEM).
