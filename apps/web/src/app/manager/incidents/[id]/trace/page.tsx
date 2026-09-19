@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -10,7 +11,7 @@ type TraceStep = {
   node: string;
   input?: Record<string, unknown> | null;
   output: Record<string, unknown>;
-  reason_codes: string[];
+  reason_codes?: string[] | null;
 };
 
 type Trace = {
@@ -43,7 +44,15 @@ export default function IncidentTracePage() {
 
   return (
     <section className="card">
-      <h1>Agent trace</h1>
+      <div className="actions" style={{ marginBottom: "1rem" }}>
+        <h1>Agent trace</h1>
+        <Link
+          className="button-link button-secondary"
+          href="/manager/dashboard"
+        >
+          &larr; Back to incident queue
+        </Link>
+      </div>
       {error && <div className="notice error">{error}</div>}
       {trace && (
         <>
@@ -57,7 +66,7 @@ export default function IncidentTracePage() {
                 <strong>
                   {step.sequence}. {step.node}
                 </strong>
-                <div>{step.reason_codes.join(" | ")}</div>
+                <div>{(step.reason_codes ?? []).join(" | ")}</div>
                 {step.input && (
                   <>
                     <strong>Input</strong>

@@ -95,6 +95,12 @@ class InMemoryIncidentRepository:
         self.items[incident_id] = updated
         return updated
 
+    def mark_requires_human_review(self, incident_id: str) -> None:
+        if incident_id in self.items:
+            self.items[incident_id] = self.items[incident_id].model_copy(
+                update={"requires_human_review": True, "updated_at": datetime.now(UTC)}
+            )
+
 
 class InMemoryWorkflowRunRepository:
     def __init__(self) -> None:

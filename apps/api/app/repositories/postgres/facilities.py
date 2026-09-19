@@ -2,7 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.models import FacilityModel, FloorModel
-from app.domain.facilities.models import Facility, Floor, FloorInput
+from app.domain.facilities.models import Facility, FacilityCategory, Floor, FloorInput
 
 
 def _to_domain(row: FloorModel) -> Floor:
@@ -10,7 +10,11 @@ def _to_domain(row: FloorModel) -> Floor:
         id=row.id,
         name=row.name,
         facilities=[
-            Facility(id=facility.id, name=facility.name, category=facility.category)
+            Facility(
+                id=facility.id,
+                name=facility.name,
+                category=FacilityCategory(facility.category),
+            )
             for facility in row.facilities
         ],
     )

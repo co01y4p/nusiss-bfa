@@ -45,6 +45,7 @@ export default function KnowledgePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   // Ingestion form state
   const [newTitle, setNewTitle] = useState("");
@@ -130,7 +131,7 @@ export default function KnowledgePage() {
   }
 
   async function deleteDoc(doc: DocumentSummary) {
-    if (!confirm(`Delete document "${doc.title}" and all its chunks?`)) return;
+    setConfirmDeleteId(null);
     setError("");
     setSuccess("");
     try {
@@ -376,19 +377,50 @@ export default function KnowledgePage() {
                       >
                         {doc.is_approved ? "Revoke (Unapprove)" : "Approve"}
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => deleteDoc(doc)}
-                        style={{
-                          width: "auto",
-                          padding: "0.4rem 0.8rem",
-                          background: "#d32f2f",
-                          color: "#fff",
-                          fontSize: "0.85rem",
-                        }}
-                      >
-                        Delete
-                      </button>
+                      {confirmDeleteId === doc.id ? (
+                        <div style={{ display: "inline-flex", gap: "0.4rem" }}>
+                          <button
+                            type="button"
+                            onClick={() => deleteDoc(doc)}
+                            style={{
+                              width: "auto",
+                              padding: "0.4rem 0.8rem",
+                              background: "#b71c1c",
+                              color: "#fff",
+                              fontSize: "0.85rem",
+                              fontWeight: 700,
+                            }}
+                          >
+                            Confirm Delete
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId(null)}
+                            className="button-secondary"
+                            style={{
+                              width: "auto",
+                              padding: "0.4rem 0.8rem",
+                              fontSize: "0.85rem",
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(doc.id)}
+                          style={{
+                            width: "auto",
+                            padding: "0.4rem 0.8rem",
+                            background: "#d32f2f",
+                            color: "#fff",
+                            fontSize: "0.85rem",
+                          }}
+                        >
+                          Delete
+                        </button>
+                      )}
                     </div>
                   </div>
 

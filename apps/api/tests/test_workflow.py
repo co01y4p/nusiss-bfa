@@ -216,12 +216,16 @@ async def test_failed_review_reaches_human_review() -> None:
             }
         }
     )
-    workflow, _, _ = make_workflow(provider)
+    workflow, incidents, _ = make_workflow(provider)
 
     state = await workflow.run(text="A water leak is spreading.", location="Level 1")
 
     assert state.outcome == "HUMAN_REVIEW"
     assert [step.node for step in state.trace][-1] == "human_review"
+    assert state.incident_id is not None
+    incident = incidents.get_by_id(state.incident_id)
+    assert incident is not None
+    assert incident.requires_human_review is True
 
 
 @pytest.mark.asyncio
@@ -305,3 +309,27 @@ async def test_recent_incidents_feed_classification_and_priority_context() -> No
     priority_calls = [c for c in provider.calls if c["schema"] == "PrioritySignalOutput"]
     assert len(classify_calls[-1]["payload"]["recent_similar_incidents"]) == 1
     assert len(priority_calls[-1]["payload"]["recent_similar_incidents"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_workflow_trace_redacts_pii() -> None:
+    workflow, _, runs = make_workflow()
+
+    state = await workflow.run(
+        text="Water leak in Room 3. Call 98765432 or email dave@example.com. NRIC is S1234567A.",
+        location="Level 3",
+    )
+
+    assert state.outcome == "FINALIZED"
+    assert "98765432" not in state.trace[0].input["text"]  # type: ignore[index]
+    assert "[PHONE REDACTED]" in state.trace[0].input["text"]  # type: ignore[index]
+    assert "[EMAIL REDACTED]" in state.trace[0].input["text"]  # type: ignore[index]
+    assert "[NRIC/FIN REDACTED]" in state.trace[0].input["text"]  # type: ignore[index]
+
+    # Verify database persistence was also sanitized
+    persisted_run = runs.get_for_incident(state.incident_id)
+    assert persisted_run is not None
+    assert "98765432" not in str(persisted_run["input_text"])
+    assert "[PHONE REDACTED]" in str(persisted_run["input_text"])
+    assert "98765432" not in str(persisted_run["trace"])
+    assert "[PHONE REDACTED]" in str(persisted_run["trace"])

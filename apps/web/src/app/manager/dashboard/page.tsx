@@ -407,6 +407,14 @@ export default function ManagerDashboardPage() {
             >
               Update Status: {statusDialog.incident.reference_code}
             </h3>
+            {error && (
+              <div
+                className="notice error"
+                style={{ marginTop: 0, marginBottom: 14 }}
+              >
+                {error}
+              </div>
+            )}
             <p
               style={{
                 color: "var(--muted)",
@@ -460,7 +468,10 @@ export default function ManagerDashboardPage() {
                 type="button"
                 className="button-secondary"
                 disabled={isUpdating}
-                onClick={() => setStatusDialog(null)}
+                onClick={() => {
+                  setStatusDialog(null);
+                  setError("");
+                }}
               >
                 Cancel
               </button>

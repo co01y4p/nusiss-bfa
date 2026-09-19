@@ -166,6 +166,13 @@ class SqlAlchemyIncidentRepository:
         self.session.refresh(row)
         return _to_domain(row, intent=_latest_intents(self.session, [row.id]).get(row.id))
 
+    def mark_requires_human_review(self, incident_id: str) -> None:
+        row = self.session.get(IncidentModel, incident_id)
+        if row is not None:
+            row.requires_human_review = True
+            row.updated_at = datetime.now(UTC)
+            self.session.commit()
+
 
 class SqlAlchemyWorkflowRunRepository:
     def __init__(self, session: Session) -> None:

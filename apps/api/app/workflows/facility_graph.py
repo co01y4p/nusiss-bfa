@@ -21,6 +21,7 @@ from app.rag.retriever import KnowledgeRetriever
 from app.repositories.interfaces.incidents import IncidentRepository, WorkflowRunRepository
 from app.repositories.interfaces.security import SecurityEventRepository
 from app.security.output_policy import OutputPolicyValidator
+from app.security.pii_redaction import redact_payload, redact_pii
 from app.security.prompt_injection import PromptInjectionDetector
 from app.tools.registry import ToolRegistry
 from app.workflows.state import WorkflowState
@@ -198,7 +199,15 @@ class FacilityWorkflow:
             )
             if state.step_count < self.settings.max_agent_steps:
                 state.record("human_review", {"error": str(exc)}, ["WORKFLOW_BOUND_REACHED"])
+        if state.incident_id and state.outcome == "HUMAN_REVIEW":
+            self.incidents.mark_requires_human_review(state.incident_id)
         self._save_run(state)
+        # Redact any PII in state.trace so API callers/inspectors never receive unmasked PII
+        for step in state.trace:
+            if step.input:
+                step.input = redact_payload(step.input)
+            if step.output:
+                step.output = redact_payload(step.output)
         record_workflow_run(state.outcome)
 
         if state.trace_ctx:
@@ -658,12 +667,14 @@ class FacilityWorkflow:
                 {"issues": issues},
                 review.reason_codes or ["CITATION_OR_SAFETY_REJECTED"],
             )
+            if state.incident_id:
+                self.incidents.mark_requires_human_review(state.incident_id)
 
     def _save_run(self, state: WorkflowState) -> None:
         self.runs.save(
             incident_id=state.incident_id,
-            input_text=state.input_text,
+            input_text=redact_pii(state.input_text).redacted_text,
             outcome=state.outcome,
             final_response=state.final_response,
-            trace=[step.model_dump(mode="json") for step in state.trace],
+            trace=[redact_payload(step.model_dump(mode="json")) for step in state.trace],
         )

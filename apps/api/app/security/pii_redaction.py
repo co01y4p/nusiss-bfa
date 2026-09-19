@@ -56,7 +56,15 @@ class PIIRedactor:
                 redactions_count=0,
             )
 
-        redacted = text
+        # Protect internal and public reference codes from false-positive phone/id matches
+        ref_tokens: dict[str, str] = {}
+
+        def _protect_ref(m: re.Match[str]) -> str:
+            token = f"__REF_TOKEN_{len(ref_tokens)}__"
+            ref_tokens[token] = m.group(0)
+            return token
+
+        redacted = re.sub(r"\bBFA-[A-Z0-9]{6,12}\b", _protect_ref, text, flags=re.IGNORECASE)
         detected: set[str] = set()
         total_count = 0
 
@@ -66,6 +74,9 @@ class PIIRedactor:
                 detected.add(pii_type)
                 total_count += len(matches)
                 redacted = re.sub(pattern, replacement, redacted, flags=re.IGNORECASE)
+
+        for token, original in ref_tokens.items():
+            redacted = redacted.replace(token, original)
 
         return RedactionResult(
             original_text=text,

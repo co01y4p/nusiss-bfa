@@ -41,11 +41,16 @@ function inferCategory(name: string): FacilityCategory {
   if (/toilet|restroom|washroom|bathroom|plumbing|pipe|sink|leak/.test(n))
     return "PLUMBING";
   if (/lift|elevator/.test(n)) return "LIFT";
-  if (/electrical|breaker|wiring|switch room|power/.test(n))
+  if (/electrical|breaker|wiring|switch room|power|lighting|light/.test(n))
     return "ELECTRICAL";
-  if (/hvac|aircon|air-con|air con|a\/c|chiller|plant room/.test(n))
+  if (
+    /hvac|aircon|air-con|air con|a\/c|\bac\b|chiller|plant room|air\s*conditioning|ventilation/.test(
+      n,
+    )
+  )
     return "HVAC";
-  if (/entrance|door|access|security|gate|lobby/.test(n)) return "ACCESS";
+  if (/entrance|door|access|security|gate|lobby|exit|barrier/.test(n))
+    return "ACCESS";
   return "GENERAL";
 }
 

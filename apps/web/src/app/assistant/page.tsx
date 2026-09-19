@@ -918,6 +918,75 @@ export default function AssistantPage() {
                 Path: Safe Refusal Fallback
               </span>
             </button>
+
+            <button
+              type="button"
+              className="scenario-card-btn"
+              onClick={() =>
+                setPreset("What is the status of incident BFA-0000000001?")
+              }
+            >
+              <div className="scenario-card-title">
+                <span>🔍 Ticket Status Query</span>
+              </div>
+              <div className="scenario-card-desc">
+                Tests Tool-Assisted Status Lookup via Opaque Reference Code
+              </div>
+              <span
+                className="scenario-card-pill"
+                style={{ background: "#f0fdf4", color: "#15803d" }}
+              >
+                Path: Status Query Tool
+              </span>
+            </button>
+
+            <button
+              type="button"
+              className="scenario-card-btn"
+              onClick={() =>
+                setPreset(
+                  "Water is dripping from the AC in seminar room 3. Contact technician Dave at 98765432 or email dave.tan@vendor.com. My NRIC is S1234567A.",
+                  "Seminar Room 3",
+                )
+              }
+            >
+              <div className="scenario-card-title">
+                <span>🛡️ PII Masking in Incident</span>
+              </div>
+              <div className="scenario-card-desc">
+                Tests Automatic Scrubbing of NRIC, Phone & Email from Traces
+              </div>
+              <span
+                className="scenario-card-pill"
+                style={{ background: "#fdf4ff", color: "#a21caf" }}
+              >
+                Path: PII Scrubbing
+              </span>
+            </button>
+
+            <button
+              type="button"
+              className="scenario-card-btn"
+              onClick={() =>
+                setPreset(
+                  "Wah lau, aircon at Level 3 meeting room 302 leaking water like waterfall until floor super slippery! Quick send someone check can or not?",
+                  "Level 3 Room 302",
+                )
+              }
+            >
+              <div className="scenario-card-title">
+                <span>🇸🇬 Dialect Fairness (Singlish)</span>
+              </div>
+              <div className="scenario-card-desc">
+                Tests Socio-Linguistic Parity & Non-Discrimination
+              </div>
+              <span
+                className="scenario-card-pill"
+                style={{ background: "#f8fafc", color: "#334155" }}
+              >
+                Path: Fairness & Invariance
+              </span>
+            </button>
           </div>
         </div>
 

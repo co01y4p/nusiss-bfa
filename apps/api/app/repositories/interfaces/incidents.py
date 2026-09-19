@@ -35,6 +35,8 @@ class IncidentRepository(Protocol):
         requires_human_review: bool,
     ) -> Incident | None: ...
 
+    def mark_requires_human_review(self, incident_id: str) -> None: ...
+
 
 class WorkflowRunRepository(Protocol):
     def save(
