@@ -199,3 +199,53 @@ async def test_openai_responses_executes_function_and_returns_output_to_model() 
     assert function_output["type"] == "function_call_output"
     assert function_output["call_id"] == "call-create-1"
     assert json.loads(function_output["output"])["data"]["id"] == "incident-123"
+
+
+@pytest.mark.asyncio
+async def test_openai_reuses_persistent_http_client() -> None:
+    call_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        call_count += 1
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"label":"INCIDENT_REPORT","confidence":0.99}',
+                        }
+                    }
+                ]
+            },
+        )
+
+    provider = OpenAICompatibleStructuredLLM(
+        base_url="https://api.openai.com/v1",
+        api_key="test-key",
+        transport=httpx.MockTransport(handler),
+    )
+
+    client1 = provider._get_client()
+    await provider.generate(
+        system_prompt="Classify",
+        user_payload={"text": "First call"},
+        output_schema=ExampleOutput,
+        model="gpt-4o-mini",
+    )
+    client2 = provider._get_client()
+
+    assert client1 is client2
+    assert not client1.is_closed
+
+    await provider.generate(
+        system_prompt="Classify",
+        user_payload={"text": "Second call"},
+        output_schema=ExampleOutput,
+        model="gpt-4o-mini",
+    )
+    assert call_count == 2
+
+    await provider.aclose()
+    assert client1.is_closed

@@ -276,7 +276,24 @@ class FacilityWorkflow:
             return
 
         self._check_bounds(state, model_call=True)
-        intent = await self.intent.run(payload)
+        extraction_task: asyncio.Task[Any] | None = None
+        try:
+            coro = self.extraction.run(payload)
+            if asyncio.iscoroutine(coro):
+                extraction_task = asyncio.create_task(coro)
+            intent = await self.intent.run(payload)
+        except Exception:
+            if extraction_task and not extraction_task.done():
+                extraction_task.cancel()
+            raise
+
+        def _cancel_extraction() -> None:
+            if extraction_task and not extraction_task.done():
+                extraction_task.cancel()
+                extraction_task.add_done_callback(
+                    lambda t: t.exception() if not t.cancelled() else None
+                )
+
         if intent.incident_id and intent.reference_code:
             # Preserve linkage even if an additional model-call bound stops the run.
             state.incident_id = intent.incident_id
@@ -341,8 +358,10 @@ class FacilityWorkflow:
                     payload,
                     incident_id=intent.incident_id,
                     reference_code=intent.reference_code,
+                    extraction_task=extraction_task,
                 )
             else:
+                _cancel_extraction()
                 state.outcome = "HUMAN_REVIEW"
                 state.final_response = "A facility manager will review this request."
                 self._record(
@@ -351,19 +370,21 @@ class FacilityWorkflow:
                     {"intent": intent.intent.value, "incident_id": None},
                     ["CREATE_INCIDENT_NOT_CALLED", "MANUAL_TRIAGE"],
                 )
-        elif intent.intent == Intent.FACILITY_QA:
-            await self._faq_path(state, payload)
-        elif intent.intent == Intent.STATUS_QUERY:
-            await self._status_query_path(state)
         else:
-            state.outcome = "HUMAN_REVIEW"
-            state.final_response = "A facility manager will review this request."
-            self._record(
-                state,
-                "human_review",
-                {"intent": intent.intent.value},
-                ["UNSUPPORTED_INTENT", "MANUAL_TRIAGE"],
-            )
+            _cancel_extraction()
+            if intent.intent == Intent.FACILITY_QA:
+                await self._faq_path(state, payload)
+            elif intent.intent == Intent.STATUS_QUERY:
+                await self._status_query_path(state)
+            else:
+                state.outcome = "HUMAN_REVIEW"
+                state.final_response = "A facility manager will review this request."
+                self._record(
+                    state,
+                    "human_review",
+                    {"intent": intent.intent.value},
+                    ["UNSUPPORTED_INTENT", "MANUAL_TRIAGE"],
+                )
 
     async def _incident_path(
         self,
@@ -372,12 +393,19 @@ class FacilityWorkflow:
         *,
         incident_id: str,
         reference_code: str,
+        extraction_task: asyncio.Task[Any] | None = None,
     ) -> None:
         state.incident_id = incident_id
         state.reference_code = reference_code
 
         self._check_bounds(state, model_call=True)
-        extraction = await self.extraction.run(payload)
+        if extraction_task is not None:
+            try:
+                extraction = await extraction_task
+            except asyncio.CancelledError:
+                extraction = await self.extraction.run(payload)
+        else:
+            extraction = await self.extraction.run(payload)
         self._record_model_output(state, "extract", payload, extraction)
 
         recent_incidents: list[dict[str, Any]] = []

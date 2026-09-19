@@ -46,6 +46,7 @@ class OpenAICompatibleStructuredLLM:
         transport: httpx.AsyncBaseTransport | None = None,
         circuit_breaker: CircuitBreaker | None = None,
         redact_pii_inputs: bool = True,
+        client: httpx.AsyncClient | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
@@ -55,6 +56,19 @@ class OpenAICompatibleStructuredLLM:
         self.transport = transport
         self.circuit_breaker = circuit_breaker or default_circuit_breaker
         self.redact_pii_inputs = redact_pii_inputs
+        self._client = client
+
+    def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                transport=self.transport,
+                limits=httpx.Limits(max_keepalive_connections=20, max_connections=100),
+            )
+        return self._client
+
+    async def aclose(self) -> None:
+        if self._client is not None and not self._client.is_closed:
+            await self._client.aclose()
 
     async def generate(
         self,
@@ -193,19 +207,18 @@ class OpenAICompatibleStructuredLLM:
         }
 
         async def send() -> OutputT:
-            async with httpx.AsyncClient(
-                timeout=timeout_seconds, transport=self.transport
-            ) as client:
-                response = await client.post(
-                    f"{self.base_url}/responses",
-                    headers={"Authorization": f"Bearer {self.api_key}"},
-                    json=request_body,
-                )
-                response.raise_for_status()
-                payload = response.json()
-                self._record_tokens(payload, model)
-                content = self._responses_output_text(payload)
-                return output_schema.model_validate_json(content)
+            client = self._get_client()
+            response = await client.post(
+                f"{self.base_url}/responses",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                json=request_body,
+                timeout=timeout_seconds,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            self._record_tokens(payload, model)
+            content = self._responses_output_text(payload)
+            return output_schema.model_validate_json(content)
 
         return await with_transient_retries(send, retries=2)
 
@@ -237,19 +250,18 @@ class OpenAICompatibleStructuredLLM:
         }
 
         async def send() -> OutputT:
-            async with httpx.AsyncClient(
-                timeout=timeout_seconds, transport=self.transport
-            ) as client:
-                response = await client.post(
-                    f"{self.base_url}/chat/completions",
-                    headers={"Authorization": f"Bearer {self.api_key}"},
-                    json=request_body,
-                )
-                response.raise_for_status()
-                payload = response.json()
-                self._record_tokens(payload, model)
-                content = payload["choices"][0]["message"].get("content")
-                return output_schema.model_validate_json(_clean_json_content(content))
+            client = self._get_client()
+            response = await client.post(
+                f"{self.base_url}/chat/completions",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                json=request_body,
+                timeout=timeout_seconds,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            self._record_tokens(payload, model)
+            content = payload["choices"][0]["message"].get("content")
+            return output_schema.model_validate_json(_clean_json_content(content))
 
         return await with_transient_retries(send, retries=2)
 
@@ -466,19 +478,18 @@ class OpenAICompatibleStructuredLLM:
         self, *, path: str, body: dict[str, Any], timeout_seconds: float
     ) -> dict[str, Any]:
         async def send() -> dict[str, Any]:
-            async with httpx.AsyncClient(
-                timeout=timeout_seconds, transport=self.transport
-            ) as client:
-                response = await client.post(
-                    f"{self.base_url}/{path}",
-                    headers={"Authorization": f"Bearer {self.api_key}"},
-                    json=body,
-                )
-                response.raise_for_status()
-                data: dict[str, Any] = response.json()
-                model_name = body.get("model") or "unknown"
-                self._record_tokens(data, model_name)
-                return data
+            client = self._get_client()
+            response = await client.post(
+                f"{self.base_url}/{path}",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                json=body,
+                timeout=timeout_seconds,
+            )
+            response.raise_for_status()
+            data: dict[str, Any] = response.json()
+            model_name = body.get("model") or "unknown"
+            self._record_tokens(data, model_name)
+            return data
 
         return await with_transient_retries(send, retries=2)
 
