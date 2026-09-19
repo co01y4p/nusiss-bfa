@@ -85,6 +85,7 @@ class IncidentModel(Base):
     priority: Mapped[str | None] = mapped_column(String(8), nullable=True)
     assigned_team: Mapped[str | None] = mapped_column(String(64), nullable=True)
     requires_human_review: Mapped[bool] = mapped_column(Boolean, default=False)
+    override_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     workflow_runs: Mapped[list["WorkflowRunModel"]] = relationship(back_populates="incident")

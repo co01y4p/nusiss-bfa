@@ -55,12 +55,16 @@ class InMemoryIncidentRepository:
         matches.sort(key=lambda item: item.created_at, reverse=True)
         return matches[:limit]
 
-    def update_status(self, incident_id: str, status: str) -> Incident | None:
+    def update_status(self, incident_id: str, status: str, *, reason: str) -> Incident | None:
         incident = self.items.get(incident_id)
         if incident is None:
             return None
         updated = incident.model_copy(
-            update={"status": IncidentStatus(status), "updated_at": datetime.now(UTC)}
+            update={
+                "status": IncidentStatus(status),
+                "override_reason": reason,
+                "updated_at": datetime.now(UTC),
+            }
         )
         self.items[incident_id] = updated
         return updated

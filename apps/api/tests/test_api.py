@@ -82,10 +82,11 @@ def test_public_incident_flow_and_manager_authorization(client: TestClient) -> N
     updated = client.patch(
         f"/api/v1/incidents/{created['id']}/status",
         headers=headers,
-        json={"status": "IN_PROGRESS"},
+        json={"status": "IN_PROGRESS", "reason": "Technician dispatched to inspect lobby"},
     )
     assert updated.status_code == 200
     assert updated.json()["status"] == "IN_PROGRESS"
+    assert updated.json()["override_reason"] == "Technician dispatched to inspect lobby"
 
 
 def test_invalid_manager_credentials_are_rejected(client: TestClient) -> None:

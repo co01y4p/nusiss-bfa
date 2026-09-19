@@ -21,6 +21,7 @@ def _to_domain(row: IncidentModel, *, intent: str | None = None) -> Incident:
         assigned_team=row.assigned_team,
         intent=intent,
         requires_human_review=row.requires_human_review,
+        override_reason=row.override_reason,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -131,11 +132,12 @@ class SqlAlchemyIncidentRepository:
         rows = self.session.scalars(stmt).all()
         return [_to_domain(row) for row in rows]
 
-    def update_status(self, incident_id: str, status: str) -> Incident | None:
+    def update_status(self, incident_id: str, status: str, *, reason: str) -> Incident | None:
         row = self.session.get(IncidentModel, incident_id)
         if row is None:
             return None
         row.status = status
+        row.override_reason = reason
         row.updated_at = datetime.now(UTC)
         self.session.commit()
         self.session.refresh(row)

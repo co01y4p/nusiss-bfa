@@ -108,6 +108,7 @@ type Incident = {
   assigned_team: string | null;
   intent: string | null;
   requires_human_review: boolean;
+  override_reason?: string | null;
   created_at: string;
 };
 
@@ -141,20 +142,40 @@ export default function ManagerDashboardPage() {
     return () => window.clearTimeout(task);
   }, [load]);
 
-  async function updateStatus(id: string, status: string) {
+  const [statusDialog, setStatusDialog] = useState<{
+    incident: Incident;
+    targetStatus: string;
+    reason: string;
+  } | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  async function confirmStatusUpdate() {
+    if (!statusDialog) return;
+    const trimmedReason = statusDialog.reason.trim();
+    if (!trimmedReason) {
+      setError("A documented reason is required to change incident status.");
+      return;
+    }
+    setIsUpdating(true);
     setError("");
     try {
-      await apiRequest(`/incidents/${id}/status`, {
+      await apiRequest(`/incidents/${statusDialog.incident.id}/status`, {
         method: "PATCH",
         headers: { ...managerHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({
+          status: statusDialog.targetStatus,
+          reason: trimmedReason,
+        }),
       });
+      setStatusDialog(null);
       await load();
     } catch (caught) {
       setError(
         caught instanceof Error ? caught.message : "Status update failed",
       );
       await load();
+    } finally {
+      setIsUpdating(false);
     }
   }
 
@@ -307,14 +328,37 @@ export default function ManagerDashboardPage() {
                   <select
                     aria-label={`Status for ${incident.reference_code}`}
                     value={incident.status}
-                    onChange={(event) =>
-                      void updateStatus(incident.id, event.target.value)
-                    }
+                    onChange={(event) => {
+                      const nextStatus = event.target.value;
+                      if (nextStatus !== incident.status) {
+                        setStatusDialog({
+                          incident,
+                          targetStatus: nextStatus,
+                          reason: "",
+                        });
+                      }
+                    }}
                   >
                     {statuses.map((status) => (
                       <option key={status}>{status}</option>
                     ))}
                   </select>
+                  {incident.override_reason && (
+                    <div
+                      style={{
+                        fontSize: "0.75rem",
+                        color: "var(--muted)",
+                        marginTop: 4,
+                        maxWidth: 160,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                      title={`Override reason: ${incident.override_reason}`}
+                    >
+                      Reason: {incident.override_reason}
+                    </div>
+                  )}
                 </td>
                 <td>
                   {incident.category ? (
@@ -330,6 +374,95 @@ export default function ManagerDashboardPage() {
           </tbody>
         </table>
       </div>
+
+      {statusDialog && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="status-dialog-title"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.6)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: 16,
+          }}
+        >
+          <div
+            className="card"
+            style={{
+              maxWidth: 480,
+              width: "100%",
+              margin: 0,
+              boxShadow: "0 20px 40px rgba(0,0,0,0.2)",
+            }}
+          >
+            <h3 id="status-dialog-title" style={{ marginTop: 0, marginBottom: 12 }}>
+              Update Status: {statusDialog.incident.reference_code}
+            </h3>
+            <p style={{ color: "var(--muted)", fontSize: "0.95rem", marginBottom: 16 }}>
+              Transition status from{" "}
+              <strong>{statusDialog.incident.status}</strong> to{" "}
+              <strong style={{ color: "var(--brand)" }}>
+                {statusDialog.targetStatus}
+              </strong>
+              . A documented reason is required for human oversight and auditability.
+            </p>
+            <label
+              htmlFor="status-reason-input"
+              style={{
+                display: "block",
+                fontWeight: 600,
+                marginBottom: 6,
+                fontSize: "0.9rem",
+              }}
+            >
+              Override Reason / Operational Note:
+            </label>
+            <textarea
+              id="status-reason-input"
+              rows={3}
+              value={statusDialog.reason}
+              onChange={(e) =>
+                setStatusDialog({ ...statusDialog, reason: e.target.value })
+              }
+              placeholder="e.g. Technician dispatched on-site, issue confirmed resolved, or false report."
+              style={{
+                width: "100%",
+                padding: "8px 12px",
+                borderRadius: 8,
+                border: "1px solid var(--line)",
+                fontFamily: "inherit",
+                fontSize: "0.95rem",
+                marginBottom: 16,
+                resize: "vertical",
+              }}
+              autoFocus
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
+              <button
+                type="button"
+                className="button-secondary"
+                disabled={isUpdating}
+                onClick={() => setStatusDialog(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isUpdating || !statusDialog.reason.trim()}
+                onClick={() => void confirmStatusUpdate()}
+              >
+                {isUpdating ? "Saving..." : "Confirm Override"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

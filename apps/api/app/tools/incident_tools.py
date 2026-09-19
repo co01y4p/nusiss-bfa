@@ -29,6 +29,10 @@ class UpdateIncidentStatusInput(BaseModel):
 
     incident_id: str
     status: str
+    reason: str = Field(
+        default="Manager tool override",
+        description="Mandatory operational reason for the status transition",
+    )
 
 
 class FindRecentIncidentsInput(BaseModel):
@@ -79,7 +83,7 @@ def register_incident_tools(registry: "ToolRegistry", incident_repo: IncidentRep
         }
 
     def update_status(args: UpdateIncidentStatusInput) -> dict[str, str] | None:
-        updated = incident_repo.update_status(args.incident_id, args.status)
+        updated = incident_repo.update_status(args.incident_id, args.status, reason=args.reason)
         if not updated:
             return None
         return {

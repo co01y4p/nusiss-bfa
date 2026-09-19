@@ -31,6 +31,7 @@ class Incident(StrictModel):
     assigned_team: str | None = None
     intent: str | None = None
     requires_human_review: bool = False
+    override_reason: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -51,6 +52,7 @@ class IncidentTracked(StrictModel):
 
 class StatusUpdate(StrictModel):
     status: IncidentStatus
+    reason: str = Field(min_length=1, max_length=500)
 
 
 class IncidentList(StrictModel):

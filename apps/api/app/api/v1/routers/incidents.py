@@ -69,7 +69,9 @@ def update_incident_status(
 ) -> Incident:
     del manager
     try:
-        incident = IncidentService(repository(db)).update_status(incident_id, body.status.value)
+        incident = IncidentService(repository(db)).update_status(
+            incident_id, body.status.value, reason=body.reason
+        )
     except InvalidStatusTransitionError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if incident is None:
