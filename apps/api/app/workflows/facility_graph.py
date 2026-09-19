@@ -228,8 +228,6 @@ class FacilityWorkflow:
             state.outcome,
             extra={
                 "outcome": state.outcome,
-                "user_input": state.input_text,
-                "llm_response": state.final_response,
                 "incident_id": state.incident_id,
                 "reference_code": state.reference_code,
                 "step_count": state.step_count,
