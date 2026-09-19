@@ -17,6 +17,23 @@ from app.monitoring.metrics import record_llm_tokens
 from app.security.pii_redaction import redact_payload
 
 
+def _clean_json_content(content: str | None) -> str:
+    """Strip markdown fences (e.g. ```json ... ```) and whitespace from model output."""
+    if not content:
+        return "{}"
+    text = content.strip()
+    if not text:
+        return "{}"
+    if text.startswith("```"):
+        lines = text.splitlines()
+        if len(lines) >= 2 and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+    return text
+
+
 class OpenAICompatibleStructuredLLM:
     def __init__(
         self,
@@ -231,8 +248,8 @@ class OpenAICompatibleStructuredLLM:
                 response.raise_for_status()
                 payload = response.json()
                 self._record_tokens(payload, model)
-                content = payload["choices"][0]["message"]["content"]
-                return output_schema.model_validate_json(content)
+                content = payload["choices"][0]["message"].get("content")
+                return output_schema.model_validate_json(_clean_json_content(content))
 
         return await with_transient_retries(send, retries=2)
 
@@ -385,7 +402,9 @@ class OpenAICompatibleStructuredLLM:
             raise RuntimeError("Model exceeded the configured function-call limit")
         if not function_calls:
             return ToolCallingResult(
-                output=output_schema.model_validate_json(message["content"]),
+                output=output_schema.model_validate_json(
+                    _clean_json_content(message.get("content"))
+                ),
                 tool_calls=[],
                 model_calls=1,
                 first_model_input=user_payload,
@@ -430,8 +449,8 @@ class OpenAICompatibleStructuredLLM:
                 },
                 timeout_seconds=timeout_seconds,
             )
-            content = final["choices"][0]["message"]["content"]
-            output = output_schema.model_validate_json(content)
+            content = final["choices"][0]["message"].get("content")
+            output = output_schema.model_validate_json(_clean_json_content(content))
         except Exception as exc:
             raise ToolCallingError(
                 "Final model response failed after function execution", tool_calls=records
@@ -516,5 +535,5 @@ class OpenAICompatibleStructuredLLM:
                     raise RuntimeError("OpenAI refused to produce the requested structured output")
                 text = content.get("text")
                 if content.get("type") == "output_text" and isinstance(text, str):
-                    return text
+                    return _clean_json_content(text)
         raise RuntimeError("OpenAI response did not contain structured output text")
