@@ -125,7 +125,9 @@ async def test_critical_hazard_forces_p1_and_human_review() -> None:
     workflow, incidents, _ = make_test_workflow()
 
     state = await workflow.run(
-        text="Emergency! There is a strong gas smell and smoke coming from the 3rd floor cafeteria.",
+        text=(
+            "Emergency! There is a strong gas smell and smoke coming from the 3rd floor cafeteria."
+        ),
         location="Cafeteria Level 3",
     )
 
@@ -216,7 +218,10 @@ async def test_trace_immutability_after_status_override() -> None:
 
 
 def test_status_update_requires_reason_and_rejects_empty(rai_client: TestClient) -> None:
-    """Status update endpoint must enforce 1-500 char reason; reject missing or empty reason with 422."""
+    """Status update endpoint must enforce 1-500 char reason.
+
+    Rejects missing or empty reason with 422.
+    """
     login_res = rai_client.post(
         "/api/v1/auth/token",
         json={"email": "manager@example.com", "password": "correct-horse-battery-staple"},

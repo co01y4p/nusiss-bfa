@@ -29,9 +29,7 @@ def test_valid_status_transition_stores_reason() -> None:
     service = IncidentService(repository)
     incident = service.create(IncidentCreate(description="Broken light", location="Lobby"))
 
-    updated = service.update_status(
-        incident.id, "IN_PROGRESS", reason="Operations crew on site"
-    )
+    updated = service.update_status(incident.id, "IN_PROGRESS", reason="Operations crew on site")
 
     assert updated is not None
     assert updated.status.value == "IN_PROGRESS"

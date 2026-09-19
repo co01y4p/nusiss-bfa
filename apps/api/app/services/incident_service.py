@@ -14,7 +14,9 @@ class IncidentService:
     def create(self, data: IncidentCreate) -> Incident:
         return self.repository.create(description=data.description, location=data.location)
 
-    def update_status(self, incident_id: str, target_status: str, *, reason: str) -> Incident | None:
+    def update_status(
+        self, incident_id: str, target_status: str, *, reason: str
+    ) -> Incident | None:
         incident = self.repository.get_by_id(incident_id)
         if incident is None:
             return None
