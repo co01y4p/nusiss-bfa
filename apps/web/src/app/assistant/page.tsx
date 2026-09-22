@@ -590,7 +590,9 @@ function getHighlightedAttributes(
     const count = asNumber(output.count) ?? 0;
     attrs.push({
       label: "Tool Called",
-      value: called ? "Yes — model judged a pattern was possible" : "No — model judged a one-off report",
+      value: called
+        ? "Yes — model judged a pattern was possible"
+        : "No — model judged a one-off report",
     });
     if (called) {
       attrs.push({
