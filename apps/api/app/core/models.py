@@ -80,6 +80,7 @@ class IncidentModel(Base):
     reference_code: Mapped[str] = mapped_column(String(32), unique=True, index=True)
     description: Mapped[str] = mapped_column(Text)
     location: Mapped[str] = mapped_column(String(200))
+    location_embedding: Mapped[list[float] | None] = mapped_column(VectorType(1536), nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="RECEIVED")
     category: Mapped[str | None] = mapped_column(String(64), nullable=True)
     priority: Mapped[str | None] = mapped_column(String(8), nullable=True)

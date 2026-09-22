@@ -15,6 +15,7 @@ from app.core.database import Base
 from app.llm.circuit_breaker import CircuitBreaker, CircuitState
 from app.llm.fake import FakeStructuredLLM
 from app.middleware.rate_limit import InMemoryRateLimiter
+from app.rag.embeddings import FakeEmbeddings
 from app.repositories.postgres.incidents import (
     SqlAlchemyIncidentRepository,
     SqlAlchemyWorkflowRunRepository,
@@ -153,13 +154,25 @@ async def test_typed_tool_registry_allowlist() -> None:
     repo = SqlAlchemyIncidentRepository(session)
 
     registry = ToolRegistry()
-    register_incident_tools(registry, repo)
+    register_incident_tools(registry, repo, FakeEmbeddings(dim=1536))
 
     function_tools = registry.function_tools(caller_role="SYSTEM", names={"create_incident"})
     assert [tool.name for tool in function_tools] == ["create_incident"]
     assert function_tools[0].strict is True
     assert function_tools[0].parameters["additionalProperties"] is False
     assert set(function_tools[0].parameters["required"]) == {"description", "location"}
+
+    # OpenAI strict function-calling requires every property to be in "required",
+    # even ones with a Pydantic default — find_recent_incidents has 3 defaulted
+    # fields that must still all appear here, or the provider rejects the whole
+    # request with an HTTP 400 the moment this tool is offered.
+    recent_tools = registry.function_tools(caller_role="SYSTEM", names={"find_recent_incidents"})
+    assert set(recent_tools[0].parameters["required"]) == {
+        "location",
+        "lookback_hours",
+        "limit",
+        "exclude_incident_id",
+    }
 
     # Incident creation is reserved for the internal workflow.
     res_create_unauth = await registry.execute(

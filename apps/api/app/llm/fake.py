@@ -82,31 +82,43 @@ class FakeStructuredLLM:
         else:
             data = self._default_response(schema_name, user_payload)
 
-        should_call = bool(data.pop("_call_tool", data.get("intent") == "INCIDENT_REPORT"))
+        # Handlers opt into a tool call explicitly via "_call_tool" (+ optional
+        # "_call_tool_args"). IntentOutput keeps its old implicit default (call
+        # create_incident whenever intent == INCIDENT_REPORT) for backward compat
+        # with existing tests/handlers that never set "_call_tool".
+        call_tool_name = data.pop("_call_tool", None)
+        call_tool_args = data.pop("_call_tool_args", None)
+        if call_tool_name is None and schema_name == "IntentOutput":
+            call_tool_name = "create_incident" if data.get("intent") == "INCIDENT_REPORT" else None
+
         records: list[FunctionCallRecord] = []
-        if should_call and any(tool.name == "create_incident" for tool in tools):
-            arguments = {
-                "description": str(user_payload.get("text", "")),
-                "location": str(user_payload.get("location") or "Unspecified"),
-            }
-            tool_output = await tool_executor("create_incident", arguments)
+        if call_tool_name and any(tool.name == call_tool_name for tool in tools):
+            if call_tool_name == "create_incident":
+                arguments = call_tool_args or {
+                    "description": str(user_payload.get("text", "")),
+                    "location": str(user_payload.get("location") or "Unspecified"),
+                }
+            else:
+                arguments = call_tool_args or {}
+            tool_output = await tool_executor(call_tool_name, arguments)
             records.append(
                 FunctionCallRecord(
-                    call_id="fake-call-create-incident",
-                    name="create_incident",
+                    call_id=f"fake-call-{call_tool_name}",
+                    name=call_tool_name,
                     model_input=user_payload,
                     arguments=arguments,
                     output=tool_output,
                 )
             )
-            created = tool_output.get("data")
-            if tool_output.get("success") is True and isinstance(created, dict):
-                data["incident_id"] = created.get("id")
-                data["reference_code"] = created.get("reference_code")
-            else:
-                data["incident_id"] = None
-                data["reference_code"] = None
-        else:
+            if call_tool_name == "create_incident":
+                created = tool_output.get("data")
+                if tool_output.get("success") is True and isinstance(created, dict):
+                    data["incident_id"] = created.get("id")
+                    data["reference_code"] = created.get("reference_code")
+                else:
+                    data["incident_id"] = None
+                    data["reference_code"] = None
+        elif schema_name == "IntentOutput":
             data["incident_id"] = None
             data["reference_code"] = None
         return ToolCallingResult(

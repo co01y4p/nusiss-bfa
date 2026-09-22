@@ -408,40 +408,71 @@ class FacilityWorkflow:
             extraction = await self.extraction.run(payload)
         self._record_model_output(state, "extract", payload, extraction)
 
-        recent_incidents: list[dict[str, Any]] = []
-        if self.tools and self.tools.is_registered("find_recent_incidents"):
-            self._check_bounds(state)
-            recent_lookup = await self.tools.execute(
-                "find_recent_incidents",
-                {"location": extraction.location, "exclude_incident_id": incident_id},
-                caller_role="SYSTEM",
-            )
-            if recent_lookup.success and recent_lookup.data:
-                recent_incidents = recent_lookup.data
-            # Trace is exposed to the (unauthenticated) caller via include_trace; never
-            # echo other occupants' reference codes here, only an aggregate summary.
-            self._record(
-                state,
-                "recent_incident_lookup",
-                {
-                    "count": len(recent_incidents),
-                    "categories": sorted(
-                        {m["category"] for m in recent_incidents if m.get("category")}
-                    ),
-                    "priorities": sorted(
-                        {m["priority"] for m in recent_incidents if m.get("priority")}
-                    ),
-                },
-                ["RECENT_INCIDENT_CONTEXT"] if recent_incidents else ["NO_RECENT_MATCHES"],
-            )
-
         classify_payload = {
             "text": state.input_text,
             "summary": extraction.summary,
-            "recent_similar_incidents": recent_incidents,
+            "location": extraction.location,
+            "incident_id": incident_id,
         }
         self._check_bounds(state, model_call=True)
         classification = await self.classification.run(classify_payload)
+
+        # ClassificationAgent decides for itself whether this report looks like a
+        # recurring pattern worth checking. This step is recorded unconditionally
+        # (called or not) so "the model chose to skip it" is never indistinguishable
+        # from "it silently never runs" in the trace/logs. Trace is exposed to the
+        # (unauthenticated) caller via include_trace; never echo other occupants'
+        # reference codes here, only an aggregate summary.
+        tool_call = next(
+            (c for c in self.classification.tool_calls if c.name == "find_recent_incidents"),
+            None,
+        )
+        recent_incidents: list[dict[str, Any]] = []
+        if tool_call is not None:
+            tool_data = tool_call.output.get("data")
+            if tool_call.output.get("success") is True and isinstance(tool_data, list):
+                recent_incidents = tool_data
+            reason_codes = (
+                ["RECENT_INCIDENT_CONTEXT"] if recent_incidents else ["NO_RECENT_MATCHES"]
+            )
+        else:
+            reason_codes = ["TOOL_NOT_CALLED_BY_MODEL"]
+
+        logger.info(
+            "find_recent_incidents %s (incident_id=%s, matches=%d)",
+            "called" if tool_call is not None else "not called by classification",
+            incident_id,
+            len(recent_incidents),
+            extra={
+                "tool": "find_recent_incidents",
+                "called": tool_call is not None,
+                "match_count": len(recent_incidents),
+                "incident_id": incident_id,
+            },
+        )
+        self._record(
+            state,
+            "recent_incident_lookup",
+            {
+                "called": tool_call is not None,
+                "count": len(recent_incidents),
+                "categories": sorted(
+                    {m["category"] for m in recent_incidents if m.get("category")}
+                ),
+                "priorities": sorted(
+                    {m["priority"] for m in recent_incidents if m.get("priority")}
+                ),
+                "assigned_teams": sorted(
+                    {m["assigned_team"] for m in recent_incidents if m.get("assigned_team")}
+                ),
+                "notes": [
+                    m["override_reason"] for m in recent_incidents if m.get("override_reason")
+                ],
+            },
+            reason_codes,
+            input=tool_call.model_input if tool_call is not None else classify_payload,
+        )
+
         self._record_model_output(state, "classify", classify_payload, classification)
 
         priority_payload = {
@@ -464,6 +495,7 @@ class FacilityWorkflow:
         assignment_payload = {
             "category": classification.category.value,
             "priority": priority.priority.value,
+            "recent_similar_incidents": recent_incidents,
         }
         self._check_bounds(state, model_call=True)
         assignment = await self.assignment.run(assignment_payload)

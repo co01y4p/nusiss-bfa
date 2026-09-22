@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.incidents.models import IncidentCreate
+from app.rag.embeddings import EmbeddingProvider
 from app.repositories.interfaces.incidents import IncidentRepository
 from app.services.incident_service import IncidentService
 
@@ -44,9 +45,15 @@ class FindRecentIncidentsInput(BaseModel):
     exclude_incident_id: str | None = None
 
 
-def register_incident_tools(registry: "ToolRegistry", incident_repo: IncidentRepository) -> None:
-    def create_incident(args: CreateIncidentInput) -> dict[str, str]:
-        incident = IncidentService(incident_repo).create(
+def register_incident_tools(
+    registry: "ToolRegistry",
+    incident_repo: IncidentRepository,
+    embeddings: EmbeddingProvider,
+    *,
+    similarity_threshold: float = 0.75,
+) -> None:
+    async def create_incident(args: CreateIncidentInput) -> dict[str, str]:
+        incident = await IncidentService(incident_repo, embeddings).create(
             IncidentCreate(description=args.description, location=args.location)
         )
         return {
@@ -109,13 +116,17 @@ def register_incident_tools(registry: "ToolRegistry", incident_repo: IncidentRep
         handler=update_status,
     )
 
-    def find_recent_incidents(args: FindRecentIncidentsInput) -> list[dict[str, str | None]]:
+    async def find_recent_incidents(
+        args: FindRecentIncidentsInput,
+    ) -> list[dict[str, str | None]]:
         since = datetime.now(UTC) - timedelta(hours=args.lookback_hours)
+        location_embedding = await embeddings.embed_query(args.location)
         matches = incident_repo.find_similar(
-            location=args.location,
+            location_embedding=location_embedding,
             since=since,
             exclude_id=args.exclude_incident_id,
             limit=args.limit,
+            similarity_threshold=similarity_threshold,
         )
         return [
             {
@@ -128,6 +139,8 @@ def register_incident_tools(registry: "ToolRegistry", incident_repo: IncidentRep
                     if hasattr(incident.status, "value")
                     else str(incident.status)
                 ),
+                "assigned_team": incident.assigned_team,
+                "override_reason": incident.override_reason,
                 "created_at": incident.created_at.isoformat(),
             }
             for incident in matches
@@ -136,8 +149,9 @@ def register_incident_tools(registry: "ToolRegistry", incident_repo: IncidentRep
     registry.register(
         name="find_recent_incidents",
         description=(
-            "Find recent incidents reported at a similar location, for pattern/duplicate "
-            "context. Internal workflow use only, not exposed to end users."
+            "Find recent incidents at a semantically similar location (embedding search, not "
+            "exact text match — e.g. 'Level 4 Room 402' and 'Level 4 Room 404' can both match), "
+            "for pattern/duplicate context. Internal workflow use only, not exposed to end users."
         ),
         input_schema=FindRecentIncidentsInput,
         required_role="SYSTEM",

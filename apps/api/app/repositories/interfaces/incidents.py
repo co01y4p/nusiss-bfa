@@ -5,7 +5,9 @@ from app.domain.incidents.models import Incident
 
 
 class IncidentRepository(Protocol):
-    def create(self, *, description: str, location: str) -> Incident: ...
+    def create(
+        self, *, description: str, location: str, location_embedding: list[float] | None = None
+    ) -> Incident: ...
 
     def get_by_id(self, incident_id: str) -> Incident | None: ...
 
@@ -24,10 +26,11 @@ class IncidentRepository(Protocol):
     def find_similar(
         self,
         *,
-        location: str,
+        location_embedding: list[float],
         since: datetime,
         exclude_id: str | None = None,
         limit: int = 5,
+        similarity_threshold: float = 0.75,
     ) -> list[Incident]: ...
 
     def update_status(self, incident_id: str, status: str, *, reason: str) -> Incident | None: ...

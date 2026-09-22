@@ -48,7 +48,7 @@ def make_test_workflow(
     incidents = InMemoryIncidentRepository()
     runs = InMemoryWorkflowRunRepository()
     tools = ToolRegistry()
-    register_incident_tools(tools, incidents)
+    register_incident_tools(tools, incidents, FakeEmbeddings(dim=1536))
 
     retriever = None
     if knowledge_session is not None:

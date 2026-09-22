@@ -1,3 +1,4 @@
+import math
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -5,11 +6,25 @@ from typing import Any
 from app.domain.incidents.models import Incident, IncidentStatus
 
 
+def _cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
+    if not vec_a or not vec_b or len(vec_a) != len(vec_b):
+        return 0.0
+    dot = sum(a * b for a, b in zip(vec_a, vec_b, strict=False))
+    norm_a = math.sqrt(sum(a * a for a in vec_a))
+    norm_b = math.sqrt(sum(b * b for b in vec_b))
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
 class InMemoryIncidentRepository:
     def __init__(self) -> None:
         self.items: dict[str, Incident] = {}
+        self._embeddings: dict[str, list[float]] = {}
 
-    def create(self, *, description: str, location: str) -> Incident:
+    def create(
+        self, *, description: str, location: str, location_embedding: list[float] | None = None
+    ) -> Incident:
         incident_id = str(uuid.uuid4())
         now = datetime.now(UTC)
         incident = Incident(
@@ -22,6 +37,8 @@ class InMemoryIncidentRepository:
             updated_at=now,
         )
         self.items[incident_id] = incident
+        if location_embedding is not None:
+            self._embeddings[incident_id] = location_embedding
         return incident
 
     def get_by_id(self, incident_id: str) -> Incident | None:
@@ -54,21 +71,20 @@ class InMemoryIncidentRepository:
     def find_similar(
         self,
         *,
-        location: str,
+        location_embedding: list[float],
         since: datetime,
         exclude_id: str | None = None,
         limit: int = 5,
+        similarity_threshold: float = 0.75,
     ) -> list[Incident]:
-        needle = location.strip().lower()
-        matches = [
-            item
+        scored = [
+            (item, _cosine_similarity(location_embedding, self._embeddings[item.id]))
             for item in self.items.values()
-            if item.id != exclude_id
-            and needle in item.location.lower()
-            and item.created_at >= since
+            if item.id != exclude_id and item.id in self._embeddings and item.created_at >= since
         ]
-        matches.sort(key=lambda item: item.created_at, reverse=True)
-        return matches[:limit]
+        scored = [pair for pair in scored if pair[1] >= similarity_threshold]
+        scored.sort(key=lambda pair: pair[1], reverse=True)
+        return [item for item, _ in scored[:limit]]
 
     def update_status(self, incident_id: str, status: str, *, reason: str) -> Incident | None:
         incident = self.items.get(incident_id)

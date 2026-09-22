@@ -74,10 +74,16 @@ def build_embeddings(settings: Settings) -> EmbeddingProvider:
 
 
 def build_tool_registry(
-    incident_repo: SqlAlchemyIncidentRepository, retriever: KnowledgeRetriever
+    incident_repo: SqlAlchemyIncidentRepository,
+    retriever: KnowledgeRetriever,
+    embeddings: EmbeddingProvider,
+    *,
+    incident_similarity_threshold: float = 0.75,
 ) -> ToolRegistry:
     registry = ToolRegistry()
-    register_incident_tools(registry, incident_repo)
+    register_incident_tools(
+        registry, incident_repo, embeddings, similarity_threshold=incident_similarity_threshold
+    )
     register_knowledge_tools(registry, retriever)
     return registry
 
@@ -96,7 +102,12 @@ def build_workflow(db: Session, settings: Settings) -> FacilityWorkflow:
     )
     citation_validator = CitationValidator()
     incident_repository = SqlAlchemyIncidentRepository(db)
-    tools = build_tool_registry(incident_repository, retriever)
+    tools = build_tool_registry(
+        incident_repository,
+        retriever,
+        embeddings,
+        incident_similarity_threshold=settings.incident_similarity_threshold,
+    )
 
     return FacilityWorkflow(
         settings=settings,
@@ -125,6 +136,7 @@ def build_workflow(db: Session, settings: Settings) -> FacilityWorkflow:
             llm,
             model=settings.classifier_model,
             timeout_seconds=settings.agent_timeout_seconds,
+            tools=tools,
             system_prompt=prompt_repo.get_active_prompt("classification"),
         ),
         priority=PriorityAgent(

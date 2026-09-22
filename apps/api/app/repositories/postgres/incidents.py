@@ -1,3 +1,4 @@
+import math
 import secrets
 from datetime import UTC, datetime
 
@@ -7,6 +8,17 @@ from sqlalchemy.orm import Session
 
 from app.core.models import IncidentModel, WorkflowRunModel
 from app.domain.incidents.models import Incident, IncidentStatus
+
+
+def _cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
+    if not vec_a or not vec_b or len(vec_a) != len(vec_b):
+        return 0.0
+    dot = sum(a * b for a, b in zip(vec_a, vec_b, strict=False))
+    norm_a = math.sqrt(sum(a * a for a in vec_a))
+    norm_b = math.sqrt(sum(b * b for b in vec_b))
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+    return dot / (norm_a * norm_b)
 
 
 def _to_domain(row: IncidentModel, *, intent: str | None = None) -> Incident:
@@ -61,20 +73,19 @@ def _reference_code() -> str:
     return "BFA-" + "".join(secrets.choice(alphabet) for _ in range(10))
 
 
-def _escape_like(value: str) -> str:
-    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
-
 class SqlAlchemyIncidentRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
-    def create(self, *, description: str, location: str) -> Incident:
+    def create(
+        self, *, description: str, location: str, location_embedding: list[float] | None = None
+    ) -> Incident:
         for _ in range(4):
             row = IncidentModel(
                 reference_code=_reference_code(),
                 description=description.strip(),
                 location=location.strip(),
+                location_embedding=location_embedding,
                 status=IncidentStatus.RECEIVED.value,
             )
             self.session.add(row)
@@ -126,22 +137,30 @@ class SqlAlchemyIncidentRepository:
     def find_similar(
         self,
         *,
-        location: str,
+        location_embedding: list[float],
         since: datetime,
         exclude_id: str | None = None,
         limit: int = 5,
+        similarity_threshold: float = 0.75,
     ) -> list[Incident]:
         stmt = (
             select(IncidentModel)
-            .where(IncidentModel.location.ilike(f"%{_escape_like(location)}%", escape="\\"))
+            .where(IncidentModel.location_embedding.is_not(None))
             .where(IncidentModel.created_at >= since)
             .order_by(IncidentModel.created_at.desc())
-            .limit(limit)
         )
         if exclude_id is not None:
             stmt = stmt.where(IncidentModel.id != exclude_id)
-        rows = self.session.scalars(stmt).all()
-        return [_to_domain(row) for row in rows]
+        candidates = self.session.scalars(stmt).all()
+
+        scored = [
+            (row, _cosine_similarity(location_embedding, row.location_embedding))
+            for row in candidates
+            if row.location_embedding
+        ]
+        scored = [item for item in scored if item[1] >= similarity_threshold]
+        scored.sort(key=lambda item: item[1], reverse=True)
+        return [_to_domain(row) for row, _ in scored[:limit]]
 
     def update_status(self, incident_id: str, status: str, *, reason: str) -> Incident | None:
         row = self.session.get(IncidentModel, incident_id)

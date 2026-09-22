@@ -1,5 +1,6 @@
 from app.domain.incidents.models import Incident, IncidentCreate
 from app.domain.incidents.policies import can_transition_status
+from app.rag.embeddings import EmbeddingProvider
 from app.repositories.interfaces.incidents import IncidentRepository
 
 
@@ -8,11 +9,21 @@ class InvalidStatusTransitionError(ValueError):
 
 
 class IncidentService:
-    def __init__(self, repository: IncidentRepository) -> None:
+    def __init__(
+        self, repository: IncidentRepository, embeddings: EmbeddingProvider | None = None
+    ) -> None:
         self.repository = repository
+        self.embeddings = embeddings
 
-    def create(self, data: IncidentCreate) -> Incident:
-        return self.repository.create(description=data.description, location=data.location)
+    async def create(self, data: IncidentCreate) -> Incident:
+        location_embedding = (
+            await self.embeddings.embed_query(data.location) if self.embeddings else None
+        )
+        return self.repository.create(
+            description=data.description,
+            location=data.location,
+            location_embedding=location_embedding,
+        )
 
     def update_status(
         self, incident_id: str, target_status: str, *, reason: str

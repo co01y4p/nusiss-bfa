@@ -5,29 +5,32 @@ from app.services.incident_service import IncidentService, InvalidStatusTransiti
 from tests.fakes import InMemoryIncidentRepository
 
 
-def test_incident_is_created_without_llm() -> None:
+@pytest.mark.asyncio
+async def test_incident_is_created_without_llm() -> None:
     repository = InMemoryIncidentRepository()
     service = IncidentService(repository)
 
-    incident = service.create(IncidentCreate(description="Broken light", location="Lobby"))
+    incident = await service.create(IncidentCreate(description="Broken light", location="Lobby"))
 
     assert incident.status.value == "RECEIVED"
     assert incident.reference_code.startswith("BFA-")
 
 
-def test_invalid_status_jump_is_rejected() -> None:
+@pytest.mark.asyncio
+async def test_invalid_status_jump_is_rejected() -> None:
     repository = InMemoryIncidentRepository()
     service = IncidentService(repository)
-    incident = service.create(IncidentCreate(description="Broken light", location="Lobby"))
+    incident = await service.create(IncidentCreate(description="Broken light", location="Lobby"))
 
     with pytest.raises(InvalidStatusTransitionError):
         service.update_status(incident.id, "CLOSED", reason="Direct close attempt")
 
 
-def test_valid_status_transition_stores_reason() -> None:
+@pytest.mark.asyncio
+async def test_valid_status_transition_stores_reason() -> None:
     repository = InMemoryIncidentRepository()
     service = IncidentService(repository)
-    incident = service.create(IncidentCreate(description="Broken light", location="Lobby"))
+    incident = await service.create(IncidentCreate(description="Broken light", location="Lobby"))
 
     updated = service.update_status(incident.id, "IN_PROGRESS", reason="Operations crew on site")
 

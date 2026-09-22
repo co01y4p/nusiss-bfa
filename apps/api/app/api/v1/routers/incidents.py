@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings, get_settings
 from app.core.database import get_db
 from app.domain.incidents.models import (
     Incident,
@@ -13,6 +14,7 @@ from app.domain.incidents.models import (
     StatusUpdate,
     TriageUpdate,
 )
+from app.rag.embeddings import EmbeddingProvider, FakeEmbeddings, OpenAICompatibleEmbeddings
 from app.repositories.postgres.incidents import SqlAlchemyIncidentRepository
 from app.security.authentication import CurrentUser, require_manager
 from app.services.incident_service import IncidentService, InvalidStatusTransitionError
@@ -24,11 +26,25 @@ def repository(db: Session) -> SqlAlchemyIncidentRepository:
     return SqlAlchemyIncidentRepository(db)
 
 
+def get_embeddings(settings: Settings) -> EmbeddingProvider:
+    has_keys = bool(settings.llm_base_url and settings.llm_api_key)
+    if settings.llm_provider in {"openai", "openrouter"} and has_keys:
+        return OpenAICompatibleEmbeddings(
+            base_url=settings.llm_base_url,
+            api_key=settings.llm_api_key,
+            model=settings.embedding_model,
+        )
+    return FakeEmbeddings(dim=settings.embedding_dim)
+
+
 @router.post("", response_model=IncidentCreated, status_code=status.HTTP_201_CREATED)
-def create_incident(
-    body: IncidentCreate, db: Annotated[Session, Depends(get_db)]
+async def create_incident(
+    body: IncidentCreate,
+    db: Annotated[Session, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> IncidentCreated:
-    incident = IncidentService(repository(db)).create(body)
+    embeddings = get_embeddings(settings)
+    incident = await IncidentService(repository(db), embeddings).create(body)
     return IncidentCreated(
         id=incident.id,
         reference_code=incident.reference_code,

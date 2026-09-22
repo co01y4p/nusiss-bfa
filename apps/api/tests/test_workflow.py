@@ -11,6 +11,7 @@ from app.agents.security import SecurityAgent
 from app.core.config import Settings
 from app.llm.fake import FakeStructuredLLM
 from app.llm.gateway import FunctionCallRecord, ToolCallingError
+from app.rag.embeddings import FakeEmbeddings
 from app.tools.incident_tools import register_incident_tools
 from app.tools.registry import ToolRegistry
 from app.workflows.facility_graph import FacilityWorkflow
@@ -32,7 +33,7 @@ def make_workflow(
     incidents = InMemoryIncidentRepository()
     runs = InMemoryWorkflowRunRepository()
     tools = ToolRegistry()
-    register_incident_tools(tools, incidents)
+    register_incident_tools(tools, incidents, FakeEmbeddings(dim=1536))
     workflow = FacilityWorkflow(
         settings=settings,
         incident_repository=incidents,
@@ -40,7 +41,7 @@ def make_workflow(
         security=SecurityAgent(**args),
         intent=IntentAgent(**args, tools=tools),
         extraction=ExtractionAgent(**args),
-        classification=ClassificationAgent(**args),
+        classification=ClassificationAgent(**args, tools=tools),
         priority=PriorityAgent(**args),
         assignment=AssignmentAgent(**args),
         response=ResponseAgent(**args),
@@ -150,7 +151,7 @@ async def test_intent_preserves_created_incident_when_final_model_turn_fails() -
 
     incidents = InMemoryIncidentRepository()
     tools = ToolRegistry()
-    register_incident_tools(tools, incidents)
+    register_incident_tools(tools, incidents, FakeEmbeddings(dim=1536))
     agent = IntentAgent(
         FailAfterToolLLM(),  # type: ignore[arg-type]
         model="fake",
@@ -295,20 +296,104 @@ async def test_status_query_unknown_reference_code_reaches_human_review() -> Non
 
 
 @pytest.mark.asyncio
-async def test_recent_incidents_feed_classification_and_priority_context() -> None:
-    provider = FakeStructuredLLM()
-    workflow, _, _ = make_workflow(provider)
+async def test_classification_records_lookup_step_even_when_not_called() -> None:
+    # Default fake ClassificationOutput never sets "_call_tool", so the model
+    # is choosing (by default) not to look up recent incidents. The step is
+    # still recorded (called=False) so "chose not to" is never indistinguishable
+    # from "silently never runs" in the trace.
+    workflow, _, _ = make_workflow()
 
-    await workflow.run(text="A ceiling light fitting is broken.", location="Block A Level 5")
+    state = await workflow.run(
+        text="A ceiling light fitting is broken.", location="Block A Level 5"
+    )
+
+    assert state.outcome == "FINALIZED"
+    lookup_steps = [step for step in state.trace if step.node == "recent_incident_lookup"]
+    assert len(lookup_steps) == 1
+    assert lookup_steps[0].output["called"] is False
+    assert lookup_steps[0].output["count"] == 0
+    assert lookup_steps[0].reason_codes == ["TOOL_NOT_CALLED_BY_MODEL"]
+
+
+@pytest.mark.asyncio
+async def test_recent_incidents_feed_classification_priority_and_assignment_context() -> None:
+    def classify_handler(payload: dict) -> dict:
+        return {
+            "category": "PLUMBING",
+            "confidence": 0.9,
+            "reason_codes": ["FAKE_RULE"],
+            "_call_tool": "find_recent_incidents",
+            "_call_tool_args": {
+                "location": payload["location"],
+                "exclude_incident_id": payload["incident_id"],
+            },
+        }
+
+    provider = FakeStructuredLLM(handlers={"ClassificationOutput": classify_handler})
+    workflow, incidents, _ = make_workflow(provider)
+
+    first = await workflow.run(
+        text="A ceiling light fitting is broken.", location="Block A Level 5"
+    )
+    assert first.incident_id is not None
+    incidents.update_status(
+        first.incident_id, "IN_PROGRESS", reason="Electrician dispatched, awaiting parts"
+    )
+
     state = await workflow.run(text="Another light fitting is broken.", location="Block A Level 5")
 
     assert state.outcome == "FINALIZED"
-    assert "recent_incident_lookup" in [step.node for step in state.trace]
+    lookup_steps = [step for step in state.trace if step.node == "recent_incident_lookup"]
+    assert len(lookup_steps) == 1
+    assert lookup_steps[0].output["called"] is True
+    assert lookup_steps[0].output["count"] == 1
+    assert lookup_steps[0].output["assigned_teams"]
+    assert lookup_steps[0].output["notes"] == ["Electrician dispatched, awaiting parts"]
 
-    classify_calls = [c for c in provider.calls if c["schema"] == "ClassificationOutput"]
     priority_calls = [c for c in provider.calls if c["schema"] == "PrioritySignalOutput"]
-    assert len(classify_calls[-1]["payload"]["recent_similar_incidents"]) == 1
-    assert len(priority_calls[-1]["payload"]["recent_similar_incidents"]) == 1
+    priority_matches = priority_calls[-1]["payload"]["recent_similar_incidents"]
+    assert len(priority_matches) == 1
+    assert priority_matches[0]["assigned_team"]
+    assert priority_matches[0]["override_reason"] == "Electrician dispatched, awaiting parts"
+
+    assignment_calls = [c for c in provider.calls if c["schema"] == "AssignmentOutput"]
+    assert len(assignment_calls[-1]["payload"]["recent_similar_incidents"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_recent_incidents_matches_same_floor_different_room() -> None:
+    # find_recent_incidents does a semantic embedding match, not exact text
+    # matching — "Level 4 Room 402" and "Level 4 Room 404" share enough of the
+    # location text (bag-of-words) to count as similar, while an unrelated
+    # location should not.
+    def classify_handler(payload: dict) -> dict:
+        return {
+            "category": "HVAC",
+            "confidence": 0.9,
+            "reason_codes": ["FAKE_RULE"],
+            "_call_tool": "find_recent_incidents",
+            "_call_tool_args": {
+                "location": payload["location"],
+                "exclude_incident_id": payload["incident_id"],
+            },
+        }
+
+    provider = FakeStructuredLLM(handlers={"ClassificationOutput": classify_handler})
+    workflow, _, _ = make_workflow(provider)
+
+    await workflow.run(text="Water is leaking from the aircon unit.", location="Level 4 Room 402")
+    await workflow.run(
+        text="Broken pipe in the basement server room.", location="Basement Server Room"
+    )
+    state = await workflow.run(
+        text="Water is leaking from the aircon unit.", location="Level 4 Room 404"
+    )
+
+    lookup_steps = [step for step in state.trace if step.node == "recent_incident_lookup"]
+    assert len(lookup_steps) == 1
+    assert lookup_steps[0].output["called"] is True
+    # Matches the Room 402 report (same-floor pattern), not the unrelated basement one.
+    assert lookup_steps[0].output["count"] == 1
 
 
 @pytest.mark.asyncio

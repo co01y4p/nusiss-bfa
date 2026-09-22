@@ -400,7 +400,14 @@ function getDecisionHighlight(step: TraceStep): {
   }
 
   if (node === "recent_incident_lookup") {
+    const called = asBoolean(output.called) ?? true;
     const count = asNumber(output.count) ?? 0;
+    if (!called) {
+      return {
+        text: `🧭 Classification judged this a one-off report — did not call find_recent_incidents.`,
+        type: "neutral",
+      };
+    }
     if (count === 0) {
       return {
         text: `🧭 Tool call find_recent_incidents: no recent similar reports near this location.`,
@@ -408,7 +415,7 @@ function getDecisionHighlight(step: TraceStep): {
       };
     }
     return {
-      text: `🧭 Tool call find_recent_incidents: found ${count} recent report(s) near this location, passed to Classification & Priority as reference context.`,
+      text: `🧭 Tool call find_recent_incidents: found ${count} recent report(s) near this location, passed to Classification, Priority & Assignment as reference context.`,
       type: "neutral",
     };
   }
@@ -579,11 +586,18 @@ function getHighlightedAttributes(
     });
     attrs.push({ label: "Output Policy", value: "Safe & PII-Redacted" });
   } else if (node === "recent_incident_lookup") {
+    const called = asBoolean(output.called) ?? true;
     const count = asNumber(output.count) ?? 0;
     attrs.push({
-      label: "Similar Recent Incidents",
-      value: `${count} match(es)`,
+      label: "Tool Called",
+      value: called ? "Yes — model judged a pattern was possible" : "No — model judged a one-off report",
     });
+    if (called) {
+      attrs.push({
+        label: "Similar Recent Incidents",
+        value: `${count} match(es)`,
+      });
+    }
     const categories = asArray(output.categories);
     if (categories && categories.length) {
       attrs.push({ label: "Categories Seen", value: categories.join(", ") });
@@ -591,6 +605,14 @@ function getHighlightedAttributes(
     const priorities = asArray(output.priorities);
     if (priorities && priorities.length) {
       attrs.push({ label: "Priorities Seen", value: priorities.join(", ") });
+    }
+    const assignedTeams = asArray(output.assigned_teams);
+    if (assignedTeams && assignedTeams.length) {
+      attrs.push({ label: "Teams Involved", value: assignedTeams.join(", ") });
+    }
+    const notes = asArray(output.notes);
+    if (notes && notes.length) {
+      attrs.push({ label: "Operational Notes", value: notes.join("; ") });
     }
     attrs.push({ label: "Tool", value: "find_recent_incidents (SYSTEM role)" });
   } else if (node === "status_lookup") {

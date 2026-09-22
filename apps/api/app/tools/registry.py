@@ -8,6 +8,27 @@ from app.llm.gateway import FunctionTool
 from app.monitoring.metrics import record_tool_invocation
 
 
+def _strict_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """Force every property into "required", recursively.
+
+    OpenAI's strict function-calling mode requires every key in "properties" to
+    also appear in "required" (nullable/defaulted fields are fine — they just
+    always have to be present in the call, possibly as null). Pydantic's
+    model_json_schema() only lists fields without a default as required, so a
+    tool with any optional/defaulted field would otherwise be rejected by the
+    provider with an HTTP 400 the moment it's offered as a tool — silently,
+    since that happens inside the agent's LLM call and gets caught by its
+    generic exception fallback.
+    """
+    if schema.get("type") == "object" and "properties" in schema:
+        schema = {**schema, "required": list(schema["properties"].keys())}
+        schema["properties"] = {
+            key: _strict_schema(value) if isinstance(value, dict) else value
+            for key, value in schema["properties"].items()
+        }
+    return schema
+
+
 class ToolExecutionResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -87,7 +108,7 @@ class ToolRegistry:
                 FunctionTool(
                     name=tool.name,
                     description=tool.description,
-                    parameters=tool.input_schema.model_json_schema(),
+                    parameters=_strict_schema(tool.input_schema.model_json_schema()),
                 )
             )
         return definitions
