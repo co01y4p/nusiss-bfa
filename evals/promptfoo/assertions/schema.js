@@ -28,6 +28,7 @@ const intents = new Set([
   "FACILITY_QA",
   "STATUS_QUERY",
   "FEEDBACK",
+  "NEEDS_CLARIFICATION",
   "OTHER",
 ]);
 const categories = new Set([

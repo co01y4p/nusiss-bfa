@@ -20,12 +20,23 @@ class WorkflowState(StrictAgentModel):
 
     input_text: str
     supplied_location: str | None = None
+    # Prior turns supplied by the client, oldest first:
+    # [{"role": "user" | "assistant", "content": str}].
+    history: list[dict[str, str]] = Field(default_factory=list)
+    # What the agents classify: earlier occupant turns joined with the current message, so a
+    # follow-up such as "level 3 pantry" is read together with the report it answers.
+    effective_text: str = ""
+    # Set when the occupant answered a pending offer: "CREATE_INCIDENT" or "DECLINE".
+    confirm_action: str | None = None
     step_count: int = 0
     model_calls: int = 0
     incident_id: str | None = None
     reference_code: str | None = None
     outcome: str = "RUNNING"
     final_response: str = ""
+    # Offer the UI should present with the reply, e.g. "shall I log this?" plus a
+    # countdown. None means there is nothing to confirm.
+    pending_action: dict[str, Any] | None = None
     trace: list[TraceStep] = Field(default_factory=list)
     trace_ctx: Any = Field(default=None, exclude=True)
 

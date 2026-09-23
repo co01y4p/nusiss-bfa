@@ -11,6 +11,7 @@ from app.agents.intent import IntentAgent
 from app.agents.priority import PriorityAgent
 from app.agents.response import ResponseAgent
 from app.core.config import Settings, get_settings
+from app.domain.incidents.policies import detect_critical_hazards
 from app.llm.factory import build_structured_llm
 from app.llm.gateway import StructuredLLM
 from app.rag.citation_validator import CitationValidator
@@ -131,7 +132,15 @@ async def evaluate_case_once(
             model=classifier_model,
             timeout_seconds=timeout,
             tools=None,
-        ).run({"text": body.message, "location": body.location})
+        ).run(
+            {
+                "text": body.message,
+                "location": body.location,
+                # Same deterministic safety flag the workflow passes, so the eval
+                # measures the intent agent exactly as it runs in production.
+                "critical_hazard_detected": bool(detect_critical_hazards(body.message)),
+            }
+        )
         require_model_output(output.reason_codes)
         return EvaluationResponse(
             case_id=body.case_id,

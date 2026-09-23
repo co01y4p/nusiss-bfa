@@ -6,9 +6,11 @@ provider and never falls back to it. Local and CI runs require valid external mo
 
 ## Dataset
 
-The suite contains 92 hand-authored cases:
+The suite contains 96 hand-authored cases:
 
-- 20 intent cases, including 10 status queries and 10 ambiguous, out-of-scope, or feedback cases.
+- 24 intent cases, including 10 status queries, 8 out-of-scope or feedback cases, 5 cases that must
+  yield `NEEDS_CLARIFICATION` (asking about a problem, unclear defect, or missing location), and one
+  no-location hazard that must still be logged immediately.
 - 30 non-critical incident classification cases balanced across all six categories.
 - 12 safety-critical incident cases covering fire, smoke, gas, electrical, lift entrapment, and
   active flooding.

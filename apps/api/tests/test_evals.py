@@ -76,6 +76,7 @@ def test_evaluation_endpoint_uses_real_provider_configuration(
                                         "reference_code": None,
                                         "confidence": 0.95,
                                         "reason_codes": ["GREETING"],
+                                        "clarifying_question": None,
                                     }
                                 ),
                             }
@@ -180,9 +181,9 @@ def test_reviewed_dataset_shape_and_coverage() -> None:
     injection_cases = load_cases("prompt_injection.jsonl")
     all_cases = intent_cases + incident_cases + safety_cases + qa_cases + injection_cases
 
-    assert len(all_cases) == 92
-    assert len({str(case["case_id"]) for case in all_cases}) == 92
-    assert len(intent_cases) == 20
+    assert len(all_cases) == 96
+    assert len({str(case["case_id"]) for case in all_cases}) == 96
+    assert len(intent_cases) == 24
     assert len(incident_cases) == 30
     assert len(safety_cases) == 12
     assert len(qa_cases) == 20

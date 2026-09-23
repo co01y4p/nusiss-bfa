@@ -40,12 +40,14 @@ AGENT_METADATA: dict[str, dict[str, Any]] = {
         "role": "Message Intent Classification",
         "description": (
             "Disambiguates occupant intent into INCIDENT_REPORT, FACILITY_QA, STATUS_QUERY, "
-            "FEEDBACK, or OTHER."
+            "FEEDBACK, NEEDS_CLARIFICATION, or OTHER, asking a follow-up question when a "
+            "report cannot be routed yet."
         ),
         "default_model": "classifier_model",
         "output_schema_summary": (
-            "intent (INCIDENT_REPORT | FACILITY_QA | STATUS_QUERY | FEEDBACK | OTHER), "
-            "incident_id, reference_code, confidence (0.0–1.0), reason_codes"
+            "intent (INCIDENT_REPORT | FACILITY_QA | STATUS_QUERY | FEEDBACK | "
+            "NEEDS_CLARIFICATION | OTHER), incident_id, reference_code, confidence "
+            "(0.0–1.0), reason_codes, clarifying_question (string or null)"
         ),
         "sample_input": {
             "text": (

@@ -14,13 +14,13 @@ This project's architecture, design decisions, and trade-offs are grounded in th
 
 - **1. Multi-Agent Architecture:** Bounded in-process graph (`apps/api/app/workflows/facility_graph.py`) orchestrated with specialized agents; non-distributed by design to avoid network partitioning and latency.
 - **2. Model Selection & Fine-Tuning:** Uses foundation models via OpenAI/OpenRouter APIs; fine-tuning is omitted in favor of few-shot prompt engineering and pgvector RAG context.
-- **3. Model Evaluation:** Systematic 92-case Promptfoo suite (`evals/promptfoo/`) enforcing 100% critical hazard recall, >=95% prompt injection resistance, and strict schema validity.
+- **3. Model Evaluation:** Systematic 96-case Promptfoo suite (`evals/promptfoo/`) enforcing 100% critical hazard recall, >=95% prompt injection resistance, and strict schema validity.
 - **4. MLSecOps & Data Drift:** Real-time observability via Langfuse and Prometheus; prompt updates via Prompt Studio (`/prompts`) and RAG re-indexing over model fine-tuning.
 - **5. Scalability & Reliability:** Stateless API scaling, Valkey sliding-window rate limiting, LLM Circuit Breaker, and deterministic fallback to human review (`review`).
 - **6. Tool Integration & MCP:** Direct in-process typed Tool Registry (`ToolRegistry`) with Pydantic validation and RBAC; avoids unnecessary external MCP IPC overhead.
 - **7. Knowledge Management:** pgvector-backed RAG with heading-aware chunking and strict citation validation refusing ungrounded claims; avoids Knowledge Graph complexity.
 - **8. Web Application Scope:** Pragmatic Next.js UI (`apps/web/`) serving as an operational harness for incident management, live agent trace visualization, and prompt/knowledge administration.
-- **9. Form vs Chatbot Interface:** Dual-mode architecture providing a non-AI "save-before-AI" form (`/report`) alongside an interactive conversational assistant (`/assistant`), both protected by M4 security guardrails.
+- **9. Form vs Chatbot Interface:** Dual-mode architecture providing a non-AI "save-before-AI" form (`/report`) alongside a multi-turn conversational assistant (`/assistant`) that asks clarifying questions and remembers the conversation, both protected by M4 security guardrails.
 - **10. Database Architecture:** Stick with current shared database implementation (SQLAlchemy ORM + Alembic migrations, supporting existing SQLite and PostgreSQL/pgvector). No per-agent databases.
 - **11. Environments:** Single production environment deployed via Docker Compose (`compose.prod.yml`) behind Caddy reverse proxy with dev-prod parity.
 - **12. RAG Scope:** Fully implemented in Milestone M3 (`apps/api/app/rag/`) grounding building policy inquiries (HVAC, operating hours, emergency procedures).
@@ -41,6 +41,19 @@ For complete technical specifications and justifications, see **[docs/aas-baseli
   - **Strict-Schema Payload Inspector:** expandable per-step JSON inspector with one-click clipboard copying for each agent's typed input/output payloads.
   - **Categorized Trace Filtering:** instant filtering across security guardrails, routing & triage decisions, and knowledge retrieval & grounding steps.
   - **API Trace Support & Audit Persistence:** `POST /api/v1/assistant/messages` accepts `include_trace: true` for on-demand execution logging; manager workflows persist full traces in `workflow_runs` for complete incident auditability.
+- **Conversation Memory & Clarifying Questions (`/assistant`):** the assistant is multi-turn. The browser keeps the
+  conversation and sends the last 6 turns as `history: [{role, content}]` with every request, so the API stays
+  stateless. The Intent Router can now return `NEEDS_CLARIFICATION` with a `clarifying_question` instead of
+  logging silently or escalating to a manager when:
+  - the occupant is *asking about* a problem rather than reporting it ("why is my aircon not cold?") — the
+    assistant acknowledges and offers to log it, and only calls `create_incident` once the occupant confirms;
+  - a defect is implied but unclear ("can someone take a look?"), or a clear non-hazard defect has no location.
+  All occupant turns are joined into one `text` for security scanning, extraction, classification, and priority,
+  so a follow-up such as "level 3 pantry" is read together with the report it answers. The clarifying question
+  itself passes the same output-policy validator and Review Agent gate (`response_type: CLARIFICATION`).
+  **Safety invariant:** a deterministic hazard check runs before any model call and is passed as
+  `critical_hazard_detected`; a flagged message (fire, smoke, gas smell, exposed wire, lift entrapment, active
+  flooding) is always logged immediately and never answered with a question, preserving 100% critical-hazard recall.
 - **Agent Prompt Control Studio (`/prompts`):** interactive prompt engineering and governance studio for all 8 specialized
   workflow agents (`security`, `intent`, `extraction`, `classification`, `priority`, `assignment`, `response`, `review`).
   Supports persistent custom prompt overrides via database (`agent_prompts`), side-by-side diff comparison against built-in
@@ -62,9 +75,9 @@ For complete technical specifications and justifications, see **[docs/aas-baseli
   - **Rate Limiting Middleware:** sliding-window rate limiter protecting public endpoints against abuse.
   - **Security Events Audit Trail:** `security_events` table and repository logging high-severity injection attempts, policy violations, and anomalous requests.
   - **File Ingestion Validation:** strict file extension, mime-type, and size boundaries preventing malicious file uploads.
-- **M5 (Evaluation):** a protected, development/CI-only evaluation API and a 92-case Promptfoo suite running against the configured real LLM and measuring intent accuracy,
+- **M5 (Evaluation):** a protected, development/CI-only evaluation API and a 96-case Promptfoo suite running against the configured real LLM and measuring intent accuracy,
   classification macro F1, critical-hazard recall, direct and indirect prompt-injection resistance, strict output schemas,
-  citation validity, and repeated-run consistency. Pull requests run the critical 22-case regression set, while pushes to
+  citation validity, and repeated-run consistency. Pull requests run the critical 23-case regression set, while pushes to
   `master` and manual workflow runs execute the complete suite. Aggregate metric gates enforce 100% critical-hazard recall,
   at least 95% prompt-injection resistance, and the documented quality targets under `evals/promptfoo/`.
 - **M6 (Observability & Metrics):**

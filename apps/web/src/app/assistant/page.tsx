@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import { apiRequest } from "@/lib/api";
 import BuildingMap, { SelectedFacility } from "@/components/building-map";
@@ -14,11 +14,43 @@ export type TraceStep = {
   reason_codes: string[];
 };
 
+type PendingAction = {
+  action: string;
+  question: string;
+  confirm_label: string;
+  cancel_label: string;
+  auto_confirm_seconds: number;
+};
+
 type AssistantResult = {
   outcome: string;
   message: string;
   reference_code: string | null;
+  pending_action?: PendingAction | null;
   trace?: TraceStep[];
+};
+
+// The browser owns the conversation memory; the API is stateless and only
+// receives a bounded window of prior turns (see MAX_HISTORY_TURNS in the API).
+type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+  outcome?: string;
+  reference_code?: string | null;
+  pendingAction?: PendingAction | null;
+  // Set once the offer is answered, so the widget stops and cannot fire twice.
+  resolved?: "confirmed" | "cancelled";
+  trace?: TraceStep[];
+};
+
+const MAX_HISTORY_TURNS = 6;
+
+const OUTCOME_STYLE: Record<string, { color: string; icon: string }> = {
+  DECLINED: { color: "#475569", icon: "🚫" },
+  FINALIZED: { color: "#15803d", icon: "✅" },
+  NEEDS_CLARIFICATION: { color: "#1d4ed8", icon: "❓" },
+  QUARANTINED: { color: "#b91c1c", icon: "🛑" },
+  HUMAN_REVIEW: { color: "#b45309", icon: "👤" },
 };
 
 type NodeMeta = {
@@ -139,6 +171,12 @@ const NODE_METADATA: Record<string, NodeMeta> = {
     icon: "✅",
     category: "final",
     role: "Final verified response approval and delivery",
+  },
+  clarification: {
+    title: "Clarifying Question",
+    icon: "❓",
+    category: "router",
+    role: "Ask the occupant for the missing detail instead of logging or escalating",
   },
   human_review: {
     title: "Human-in-the-Loop Triage",
@@ -635,13 +673,156 @@ function getHighlightedAttributes(
   return attrs;
 }
 
+/**
+ * Confirm/cancel offer with an auto-proceeding countdown.
+ *
+ * The ring drains on an ease-out curve so it races away from full and creeps
+ * towards zero — the deceleration reads as "you still have time" rather than a
+ * cliff edge. Elapsed time drives the animation (not a tick counter) so it stays
+ * smooth and cannot drift.
+ */
+function ConfirmCountdown({
+  pending,
+  onConfirm,
+  onCancel,
+}: {
+  pending: PendingAction;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const total = pending.auto_confirm_seconds;
+  const [remaining, setRemaining] = useState(total);
+  const firedRef = useRef(false);
+
+  useEffect(() => {
+    const started = Date.now();
+    let frame = 0;
+    const tick = () => {
+      const left = total - (Date.now() - started) / 1000;
+      if (left <= 0) {
+        if (!firedRef.current) {
+          firedRef.current = true;
+          onConfirm();
+        }
+        setRemaining(0);
+        return;
+      }
+      setRemaining(left);
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [total, onConfirm]);
+
+  const linear = Math.max(0, Math.min(1, remaining / total));
+  // Ease-out: fast at first, slowing as it approaches zero.
+  const eased = 1 - Math.pow(1 - linear, 3);
+  const size = 46;
+  const stroke = 4;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const urgent = remaining <= 5;
+
+  return (
+    <div
+      style={{
+        marginTop: "10px",
+        padding: "12px 14px",
+        borderRadius: "12px",
+        border: "1px solid #bfdbfe",
+        background: "#eff6ff",
+        display: "flex",
+        alignItems: "center",
+        gap: "14px",
+        flexWrap: "wrap",
+      }}
+    >
+      <div style={{ position: "relative", width: size, height: size }}>
+        <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke="#dbeafe"
+            strokeWidth={stroke}
+          />
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke={urgent ? "#b45309" : "#1d4ed8"}
+            strokeWidth={stroke}
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={circumference * (1 - eased)}
+          />
+        </svg>
+        <span
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontWeight: 700,
+            fontSize: "0.95rem",
+            color: urgent ? "#b45309" : "#1d4ed8",
+            transition: "color 200ms ease",
+          }}
+        >
+          {Math.ceil(remaining)}
+        </span>
+      </div>
+
+      <div style={{ flex: "1 1 220px", minWidth: 0 }}>
+        <div style={{ fontWeight: 700, fontSize: "0.92rem", color: "#1e293b" }}>
+          {pending.question}
+        </div>
+        <div style={{ fontSize: "0.8rem", color: "#475569", marginTop: "2px" }}>
+          Reporting automatically in {Math.ceil(remaining)}s unless you cancel.
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: "8px" }}>
+        <button
+          type="button"
+          onClick={onConfirm}
+          style={{
+            width: "auto",
+            padding: "0.5rem 1.1rem",
+            fontSize: "0.88rem",
+            fontWeight: 700,
+          }}
+        >
+          {pending.confirm_label}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          style={{
+            width: "auto",
+            padding: "0.5rem 1.1rem",
+            fontSize: "0.88rem",
+            background: "#f1f5f9",
+            color: "#334155",
+          }}
+        >
+          {pending.cancel_label}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function AssistantPage() {
   const [messageText, setMessageText] = useState("");
   const [locationText, setLocationText] = useState("");
   const [selectedFacilityId, setSelectedFacilityId] = useState<string | null>(
     null,
   );
-  const [result, setResult] = useState<AssistantResult | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [activeStepIndex, setActiveStepIndex] = useState(0);
@@ -652,6 +833,20 @@ export default function AssistantPage() {
   const [copiedStep, setCopiedStep] = useState<number | null>(null);
   const [copiedTrace, setCopiedTrace] = useState(false);
 
+  // The trace inspector below always shows the latest assistant turn.
+  const lastAssistant = [...messages]
+    .reverse()
+    .find((item) => item.role === "assistant");
+  const result: AssistantResult | null = lastAssistant
+    ? {
+        outcome: lastAssistant.outcome ?? "",
+        message: lastAssistant.content,
+        reference_code: lastAssistant.reference_code ?? null,
+        trace: lastAssistant.trace,
+      }
+    : null;
+  const awaitingReply = lastAssistant?.outcome === "NEEDS_CLARIFICATION";
+
   // Animated in-flight step simulation
   useEffect(() => {
     if (!busy) return;
@@ -661,44 +856,117 @@ export default function AssistantPage() {
     return () => clearInterval(interval);
   }, [busy]);
 
+  /**
+   * One path for every turn — typed messages and countdown answers alike — so the
+   * history window and trace handling can never diverge between them.
+   */
+  const send = useCallback(
+    async (
+      outgoing: string,
+      opts: { confirmAction?: "CREATE_INCIDENT" | "DECLINE"; echoUser?: boolean } = {},
+    ) => {
+      const { confirmAction, echoUser = true } = opts;
+      let history: { role: string; content: string }[] = [];
+      setMessages((prev) => {
+        history = prev
+          .slice(-MAX_HISTORY_TURNS)
+          .map(({ role, content }) => ({ role, content }));
+        return echoUser ? [...prev, { role: "user", content: outgoing }] : prev;
+      });
+      setBusy(true);
+      setError("");
+      setExpandedPayloads({});
+
+      try {
+        const response = await apiRequest<AssistantResult>(
+          "/assistant/messages",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              message: outgoing,
+              location: locationText.trim() || null,
+              include_trace: true,
+              history,
+              ...(confirmAction ? { confirm_action: confirmAction } : {}),
+            }),
+          },
+        );
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: response.message,
+            outcome: response.outcome,
+            reference_code: response.reference_code,
+            pendingAction: response.pending_action ?? null,
+            trace: response.trace,
+          },
+        ]);
+        return true;
+      } catch (caught) {
+        if (echoUser) setMessages((prev) => prev.slice(0, -1));
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : "The assistant is unavailable",
+        );
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [locationText],
+  );
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!messageText.trim()) return;
-    setBusy(true);
-    setError("");
-    setResult(null);
-    setExpandedPayloads({});
-
-    try {
-      const response = await apiRequest<AssistantResult>(
-        "/assistant/messages",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            message: messageText.trim(),
-            location: locationText.trim() || null,
-            include_trace: true,
-          }),
-        },
-      );
-      setResult(response);
-    } catch (caught) {
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : "The assistant is unavailable",
-      );
-    } finally {
-      setBusy(false);
-    }
+    const outgoing = messageText.trim();
+    setMessageText("");
+    const ok = await send(outgoing);
+    // Keep the failed message in the composer so it can be resent.
+    if (!ok) setMessageText(outgoing);
   }
+
+  /** Mark the offer answered first, so the countdown cannot also fire. */
+  const resolveOffer = useCallback(
+    (index: number, decision: "confirmed" | "cancelled") => {
+      let alreadyResolved = true;
+      setMessages((prev) => {
+        if (prev[index]?.resolved) return prev;
+        alreadyResolved = false;
+        const next = [...prev];
+        next[index] = { ...next[index], resolved: decision };
+        return next;
+      });
+      return !alreadyResolved;
+    },
+    [],
+  );
+
+  const confirmOffer = useCallback(
+    (index: number) => {
+      if (!resolveOffer(index, "confirmed")) return;
+      void send("Yes, please report it.", {
+        confirmAction: "CREATE_INCIDENT",
+      });
+    },
+    [resolveOffer, send],
+  );
+
+  const cancelOffer = useCallback(
+    (index: number) => {
+      if (!resolveOffer(index, "cancelled")) return;
+      void send("No, I was just asking.", { confirmAction: "DECLINE" });
+    },
+    [resolveOffer, send],
+  );
 
   function setPreset(msg: string, loc: string = "") {
     setMessageText(msg);
     setLocationText(loc);
     setSelectedFacilityId(null);
-    setResult(null);
     setError("");
   }
 
@@ -706,8 +974,14 @@ export default function AssistantPage() {
     setSelectedFacilityId(facility.facilityId);
     setLocationText(facility.locationLabel);
     setMessageText((prev) => (prev.trim() ? prev : facility.example));
-    setResult(null);
     setError("");
+  }
+
+  function resetConversation() {
+    setMessages([]);
+    setMessageText("");
+    setError("");
+    setExpandedPayloads({});
   }
 
   function togglePayload(sequence: number) {
@@ -1028,13 +1302,21 @@ export default function AssistantPage() {
         />
 
         <form onSubmit={submit}>
-          <label htmlFor="message">User Message / Prompt</label>
+          <label htmlFor="message">
+            {awaitingReply
+              ? "Reply to the assistant's question"
+              : "User Message / Prompt"}
+          </label>
           <textarea
             id="message"
             name="message"
             value={messageText}
             onChange={(e) => setMessageText(e.target.value)}
-            placeholder="e.g. What are the building operating hours? OR Report a leaking pipe on Level 3."
+            placeholder={
+              awaitingReply
+                ? "e.g. It's the aircon in room 3-01, yes please log it."
+                : "e.g. What are the building operating hours? OR Report a leaking pipe on Level 3."
+            }
             maxLength={8000}
             required
           />
@@ -1078,10 +1360,29 @@ export default function AssistantPage() {
                   <span className="agent-live-dot" />
                   Running Multi-Agent Workflow...
                 </>
+              ) : awaitingReply ? (
+                <>💬 Send Reply</>
               ) : (
                 <>🚀 Run Multi-Agent Workflow</>
               )}
             </button>
+
+            {messages.length > 0 && (
+              <button
+                type="button"
+                onClick={resetConversation}
+                disabled={busy}
+                style={{
+                  width: "auto",
+                  padding: "0.65rem 1.2rem",
+                  background: "#f1f5f9",
+                  color: "#334155",
+                  fontSize: "0.9rem",
+                }}
+              >
+                🧹 New Conversation
+              </button>
+            )}
 
             <Link href="/knowledge" style={{ fontSize: "0.9rem" }}>
               Manage Knowledge Base (RAG) &rarr;
@@ -1113,6 +1414,122 @@ export default function AssistantPage() {
         )}
       </section>
 
+      {/* Conversation thread: what the occupant and assistant have said so far */}
+      {messages.length > 0 && (
+        <section className="card">
+          <div
+            className="actions"
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+            }}
+          >
+            <h2>Conversation</h2>
+            <span style={{ fontSize: "0.85rem", color: "#64748b" }}>
+              {messages.length} turn{messages.length === 1 ? "" : "s"} · the
+              last {MAX_HISTORY_TURNS} are sent as context
+            </span>
+          </div>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "10px",
+              marginTop: "1rem",
+            }}
+          >
+            {messages.map((item, index) => {
+              const isUser = item.role === "user";
+              const style = item.outcome
+                ? OUTCOME_STYLE[item.outcome]
+                : undefined;
+              return (
+                <div
+                  key={index}
+                  style={{
+                    alignSelf: isUser ? "flex-end" : "flex-start",
+                    maxWidth: "85%",
+                    padding: "10px 14px",
+                    borderRadius: "12px",
+                    background: isUser ? "#1d4ed8" : "#f8fafc",
+                    color: isUser ? "#fff" : "#1e293b",
+                    border: isUser ? "none" : "1px solid #e2e8f0",
+                    lineHeight: 1.5,
+                    fontSize: "0.98rem",
+                  }}
+                >
+                  {!isUser && item.outcome && (
+                    <div
+                      style={{
+                        fontSize: "0.72rem",
+                        fontWeight: 700,
+                        color: style?.color ?? "#b45309",
+                        marginBottom: "4px",
+                        letterSpacing: "0.02em",
+                      }}
+                    >
+                      {style?.icon ?? ""} {item.outcome}
+                    </div>
+                  )}
+                  <span style={{ whiteSpace: "pre-wrap" }}>{item.content}</span>
+                  {item.reference_code && (
+                    <div style={{ marginTop: "6px", fontSize: "0.85rem" }}>
+                      Reference: <code>{item.reference_code}</code>
+                    </div>
+                  )}
+                  {item.pendingAction && !item.resolved && !busy && (
+                    <ConfirmCountdown
+                      pending={item.pendingAction}
+                      onConfirm={() => confirmOffer(index)}
+                      onCancel={() => cancelOffer(index)}
+                    />
+                  )}
+                  {item.resolved === "cancelled" && (
+                    <div
+                      style={{
+                        marginTop: "8px",
+                        fontSize: "0.82rem",
+                        color: "#475569",
+                      }}
+                    >
+                      🚫 Cancelled — nothing was logged.
+                    </div>
+                  )}
+                  {item.resolved === "confirmed" && (
+                    <div
+                      style={{
+                        marginTop: "8px",
+                        fontSize: "0.82rem",
+                        color: "#15803d",
+                      }}
+                    >
+                      ✅ Reporting it now…
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {busy && (
+              <div
+                style={{
+                  alignSelf: "flex-start",
+                  padding: "10px 14px",
+                  borderRadius: "12px",
+                  background: "#f8fafc",
+                  border: "1px dashed #cbd5e1",
+                  color: "#64748b",
+                  fontSize: "0.9rem",
+                }}
+              >
+                Assistant is thinking…
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* Response and Multi-Agent Flow Log */}
       {result && (
         <>
@@ -1130,7 +1547,7 @@ export default function AssistantPage() {
               <div
                 style={{ display: "flex", alignItems: "center", gap: "10px" }}
               >
-                <h2>Assistant Output</h2>
+                <h2>Latest Assistant Output</h2>
                 {result.trace && (
                   <span
                     style={{
@@ -1147,21 +1564,14 @@ export default function AssistantPage() {
               <span
                 className="pill"
                 style={{
-                  background:
-                    result.outcome === "FINALIZED"
-                      ? "#15803d"
-                      : result.outcome === "QUARANTINED"
-                        ? "#b91c1c"
-                        : "#b45309",
+                  background: OUTCOME_STYLE[result.outcome]?.color ?? "#b45309",
                   color: "#fff",
                   fontWeight: 700,
                   fontSize: "0.88rem",
                   padding: "4px 14px",
                 }}
               >
-                {result.outcome === "FINALIZED" && "✅ "}
-                {result.outcome === "QUARANTINED" && "🛑 "}
-                {result.outcome === "HUMAN_REVIEW" && "👤 "}
+                {OUTCOME_STYLE[result.outcome]?.icon}{" "}
                 {result.outcome}
               </span>
             </div>

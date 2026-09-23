@@ -220,3 +220,51 @@ def test_knowledge_document_chunk_preview(client: TestClient) -> None:
 
     missing = client.get("/api/v1/knowledge/documents/does-not-exist/chunks")
     assert missing.status_code == 404
+
+
+def test_assistant_accepts_conversation_history(client: TestClient) -> None:
+    first = client.post(
+        "/api/v1/assistant/messages",
+        json={"message": "Can someone take a look?", "include_trace": True},
+    )
+    assert first.status_code == 200
+    assert first.json()["outcome"] == "NEEDS_CLARIFICATION"
+    assert first.json()["message"].endswith("?")
+    assert "clarification" in [step["node"] for step in first.json()["trace"]]
+
+    second = client.post(
+        "/api/v1/assistant/messages",
+        json={
+            "message": "The tap is leaking in the level 3 pantry.",
+            "history": [
+                {"role": "user", "content": "Can someone take a look?"},
+                {"role": "assistant", "content": first.json()["message"]},
+            ],
+        },
+    )
+    assert second.status_code == 200
+    assert second.json()["outcome"] == "FINALIZED"
+    assert second.json()["reference_code"]
+
+
+def test_assistant_rejects_oversized_history(client: TestClient) -> None:
+    too_many_turns = client.post(
+        "/api/v1/assistant/messages",
+        json={
+            "message": "Hello",
+            "history": [{"role": "user", "content": f"turn {i}"} for i in range(7)],
+        },
+    )
+    assert too_many_turns.status_code == 422
+
+    too_long_turn = client.post(
+        "/api/v1/assistant/messages",
+        json={"message": "Hello", "history": [{"role": "user", "content": "x" * 2001}]},
+    )
+    assert too_long_turn.status_code == 422
+
+    bad_role = client.post(
+        "/api/v1/assistant/messages",
+        json={"message": "Hello", "history": [{"role": "system", "content": "hi"}]},
+    )
+    assert bad_role.status_code == 422

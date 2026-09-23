@@ -41,6 +41,11 @@ class FakeStructuredLLM:
             data = handler
         else:
             data = self._default_response(schema_name, user_payload)
+        # "_call_tool" steers generate_with_tools only; strip it so handler dicts can be
+        # shared between both entry points without tripping extra="forbid".
+        data = {k: v for k, v in data.items() if k != "_call_tool"}
+        if schema_name == "IntentOutput":
+            data.setdefault("clarifying_question", None)
         prompt_tokens = max(1, len(str(user_payload)) // 4)
         completion_tokens = max(1, len(str(data)) // 4)
         record_llm_tokens(
@@ -81,6 +86,8 @@ class FakeStructuredLLM:
             data = dict(handler)
         else:
             data = self._default_response(schema_name, user_payload)
+        if schema_name == "IntentOutput":
+            data.setdefault("clarifying_question", None)
 
         # Handlers opt into a tool call explicitly via "_call_tool" (+ optional
         # "_call_tool_args"). IntentOutput keeps its old implicit default (call
@@ -166,6 +173,11 @@ class FakeStructuredLLM:
             elif "feedback" in text:
                 intent = "FEEDBACK"
                 confidence = 0.88
+            elif any(word in text for word in ("look", "attention", "problem", "issue", "fix")):
+                # Facility-flavoured but no identifiable defect: ask instead of
+                # punting to manual triage.
+                intent = "NEEDS_CLARIFICATION"
+                confidence = 0.6
             else:
                 intent = "OTHER"
                 confidence = 0.55
@@ -175,6 +187,11 @@ class FakeStructuredLLM:
                 "reference_code": None,
                 "confidence": confidence,
                 "reason_codes": ["FAKE_RULE"],
+                "clarifying_question": (
+                    "Could you tell me what the problem is and where it is located?"
+                    if intent == "NEEDS_CLARIFICATION"
+                    else None
+                ),
             }
         if schema_name == "ExtractionOutput":
             hazards: list[str] = []

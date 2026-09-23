@@ -14,6 +14,7 @@ from app.agents.response import ResponseAgent
 from app.agents.review import ReviewAgent
 from app.agents.security import SecurityAgent
 from app.core.config import Settings
+from app.domain.incidents.policies import detect_critical_hazards
 from app.monitoring.langfuse import LangfuseTracer
 from app.monitoring.metrics import record_workflow_run
 from app.rag.citation_validator import CitationValidator
@@ -33,8 +34,70 @@ class WorkflowLimitError(RuntimeError):
     pass
 
 
+# Conversation memory is client-supplied and bounded so the API stays stateless.
+MAX_HISTORY_TURNS = 6
+# How long the UI counts down before acting on an unanswered offer.
+CONFIRM_TIMEOUT_SECONDS = 15
+MAX_HISTORY_TURN_CHARS = 2000
+HISTORY_ROLES = {"user", "assistant"}
+
+
+def normalize_history(history: list[dict[str, str]] | None) -> list[dict[str, str]]:
+    """Keep only well-formed, non-empty turns; the most recent MAX_HISTORY_TURNS win."""
+    cleaned: list[dict[str, str]] = []
+    for turn in history or []:
+        role = str(turn.get("role", "")).strip().lower()
+        content = str(turn.get("content", "")).strip()
+        if role not in HISTORY_ROLES or not content:
+            continue
+        cleaned.append({"role": role, "content": content[:MAX_HISTORY_TURN_CHARS]})
+    return cleaned[-MAX_HISTORY_TURNS:]
+
+
+REFERENCE_CODE_PATTERN = re.compile(r"\bBFA-[A-Z0-9]{6,12}\b", re.IGNORECASE)
+
+
+def unsettled_user_turns(history: list[dict[str, str]]) -> list[str]:
+    """Occupant turns that have NOT already produced an incident.
+
+    A turn whose reply carried a reference code is already logged. Replaying it into
+    the next classification is how "what do I do in a fire?" ends up filing a second
+    P1 ticket for a fire reported three turns ago.
+    """
+    turns: list[str] = []
+    for index, turn in enumerate(history):
+        if turn["role"] != "user":
+            continue
+        reply = history[index + 1] if index + 1 < len(history) else None
+        settled = (
+            reply is not None
+            and reply["role"] == "assistant"
+            and REFERENCE_CODE_PATTERN.search(reply["content"]) is not None
+        )
+        if not settled:
+            turns.append(turn["content"])
+    return turns
+
+
+def build_effective_text(history: list[dict[str, str]], current: str, *, limit: int) -> str:
+    """Join still-open occupant turns with the current message, dropping the oldest to fit."""
+    user_turns = unsettled_user_turns(history)
+    while user_turns:
+        candidate = "\n".join([*user_turns, current])
+        if len(candidate) <= limit:
+            return candidate
+        user_turns.pop(0)
+    return current
+
+
 class WorkflowEngine(Protocol):
-    async def run(self, *, text: str, location: str | None = None) -> WorkflowState: ...
+    async def run(
+        self,
+        *,
+        text: str,
+        location: str | None = None,
+        history: list[dict[str, str]] | None = None,
+    ) -> WorkflowState: ...
 
 
 class FacilityWorkflow:
@@ -106,6 +169,7 @@ class FacilityWorkflow:
             "status_response",
             "finalize",
             "human_review",
+            "clarification",
         }:
             state.trace_ctx.log_span(
                 name=f"step:{node}",
@@ -173,22 +237,36 @@ class FacilityWorkflow:
             except Exception:
                 pass
 
-    async def run(self, *, text: str, location: str | None = None) -> WorkflowState:
+    async def run(
+        self,
+        *,
+        text: str,
+        location: str | None = None,
+        history: list[dict[str, str]] | None = None,
+        confirm_action: str | None = None,
+    ) -> WorkflowState:
         normalized = text.strip()
         if not normalized:
             raise ValueError("Message must not be empty")
         if len(normalized) > self.settings.max_input_chars:
             raise ValueError("Message exceeds the configured input limit")
+        turns = normalize_history(history)
+        effective_text = build_effective_text(
+            turns, normalized, limit=self.settings.max_input_chars
+        )
 
         trace_ctx = self.tracer.start_trace(
             name="facility-assistant",
-            input_data={"message": normalized, "location": location},
-            metadata={"app_env": self.settings.app_env},
+            input_data={"message": normalized, "location": location, "history": turns},
+            metadata={"app_env": self.settings.app_env, "history_turns": len(turns)},
             tags=[f"env:{self.settings.app_env}"],
         )
         state = WorkflowState(
             input_text=normalized,
             supplied_location=location,
+            history=turns,
+            effective_text=effective_text,
+            confirm_action=confirm_action,
             trace_ctx=trace_ctx,
         )
         try:
@@ -248,11 +326,41 @@ class FacilityWorkflow:
         )
         return state
 
-    async def _execute(self, state: WorkflowState) -> None:
-        payload: dict[str, Any] = {
-            "text": state.input_text,
-            "location": state.supplied_location,
+    def _offer_incident(self, state: WorkflowState, question: str) -> None:
+        """Attach a confirm/cancel offer for the UI to render with a countdown."""
+        state.pending_action = {
+            "action": "CREATE_INCIDENT",
+            "question": question,
+            "confirm_label": "Yes, report it",
+            "cancel_label": "No, just asking",
+            "auto_confirm_seconds": CONFIRM_TIMEOUT_SECONDS,
         }
+
+    async def _execute(self, state: WorkflowState) -> None:
+        # Deterministic hazard detection runs before any model call so the intent agent
+        # can be forced to log immediately instead of asking a clarifying question.
+        # Deliberately scoped to the CURRENT message. Using the whole conversation
+        # would let a fire reported three turns ago force a later "what do I do in a
+        # fire?" question to be logged as a second incident.
+        hazards = sorted(detect_critical_hazards(state.input_text))
+        payload: dict[str, Any] = {
+            "text": state.effective_text,
+            "current_message": state.input_text,
+            "location": state.supplied_location,
+            "history": state.history,
+            "critical_hazard_detected": bool(hazards),
+        }
+
+        if state.confirm_action == "DECLINE":
+            # The occupant cancelled the countdown. Nothing is logged, and we say so
+            # plainly rather than leaving them wondering.
+            state.outcome = "DECLINED"
+            state.final_response = (
+                "No problem — I have not logged anything. Tell me if you would like to "
+                "report it after all."
+            )
+            self._record(state, "declined", {"action": "CREATE_INCIDENT"}, ["OCCUPANT_DECLINED"])
+            return
 
         self._check_bounds(state, model_call=True)
         security = await self.security.run(payload)
@@ -272,6 +380,42 @@ class FacilityWorkflow:
                 input_text=state.input_text,
                 details={"risk_score": security.risk_score, "risk_labels": security.risk_labels},
                 reason_codes=security.reason_codes,
+            )
+            return
+
+        if state.confirm_action == "CREATE_INCIDENT":
+            # The occupant confirmed (or let the countdown run out). Whether to log is
+            # settled, so the tool is invoked directly rather than re-asking the model.
+            if self.tools is None or not self.tools.is_registered("create_incident"):
+                state.outcome = "HUMAN_REVIEW"
+                state.final_response = "A facility manager will review this request."
+                self._record(state, "human_review", {"confirmed": True}, ["TOOL_UNAVAILABLE"])
+                return
+            created = await self.tools.execute(
+                "create_incident",
+                {
+                    "description": state.effective_text,
+                    "location": state.supplied_location or "Unspecified",
+                },
+                caller_role="SYSTEM",
+            )
+            data = created.data if created.success else None
+            if not isinstance(data, dict):
+                state.outcome = "HUMAN_REVIEW"
+                state.final_response = "A facility manager will review this request."
+                self._record(state, "human_review", {"confirmed": True}, ["CREATE_INCIDENT_FAILED"])
+                return
+            self._record(
+                state,
+                "create_incident",
+                {"success": True, "reference_code": data["reference_code"]},
+                ["OCCUPANT_CONFIRMED"],
+            )
+            await self._incident_path(
+                state,
+                payload,
+                incident_id=data["id"],
+                reference_code=data["reference_code"],
             )
             return
 
@@ -376,6 +520,8 @@ class FacilityWorkflow:
                 await self._faq_path(state, payload)
             elif intent.intent == Intent.STATUS_QUERY:
                 await self._status_query_path(state)
+            elif intent.intent == Intent.NEEDS_CLARIFICATION and intent.clarifying_question:
+                await self._clarification_path(state, intent.clarifying_question, hazards)
             else:
                 state.outcome = "HUMAN_REVIEW"
                 state.final_response = "A facility manager will review this request."
@@ -409,7 +555,7 @@ class FacilityWorkflow:
         self._record_model_output(state, "extract", payload, extraction)
 
         classify_payload = {
-            "text": state.input_text,
+            "text": state.effective_text,
             "summary": extraction.summary,
             "location": extraction.location,
             "incident_id": incident_id,
@@ -476,7 +622,7 @@ class FacilityWorkflow:
         self._record_model_output(state, "classify", classify_payload, classification)
 
         priority_payload = {
-            "text": state.input_text,
+            "text": state.effective_text,
             "hazard_codes": [code.value for code in extraction.hazard_codes],
             "category": classification.category.value,
             "recent_similar_incidents": recent_incidents,
@@ -630,10 +776,11 @@ class FacilityWorkflow:
             response.citations,
             retrieved_chunks=safe_chunks,
             validator_issues=val_result.issues if not val_result.is_valid else None,
+            citations_verified=val_result.is_valid,
         )
 
     async def _status_query_path(self, state: WorkflowState) -> None:
-        match = re.search(r"\bBFA-[A-Z0-9]{6,12}\b", state.input_text.upper())
+        match = re.search(r"\bBFA-[A-Z0-9]{6,12}\b", state.effective_text.upper())
         if not self.tools or not self.tools.is_registered("lookup_incident_status") or not match:
             state.outcome = "HUMAN_REVIEW"
             state.final_response = "A facility manager will review this request."
@@ -676,6 +823,106 @@ class FacilityWorkflow:
             state, response.message, response.citations, response_type="STATUS_UPDATE"
         )
 
+    async def _retrieve_safe_chunks(self, state: WorkflowState, query: str) -> list[Any]:
+        """Retrieve approved chunks, dropping any that carry indirect injection."""
+        if not self.retriever:
+            return []
+        safe_chunks = []
+        for chunk in await self.retriever.search(
+            query, top_k=self.settings.rag_top_k, access_scope="PUBLIC", must_be_approved=True
+        ):
+            score = self.injection_detector.score_chunk(chunk.content)
+            if score.is_high_risk:
+                self._log_security_event(
+                    event_type="INDIRECT_RAG_INJECTION",
+                    severity="HIGH",
+                    input_text=state.input_text,
+                    details={
+                        "chunk_id": chunk.chunk_id,
+                        "heading": chunk.heading,
+                        "risk_labels": score.risk_labels,
+                    },
+                    reason_codes=score.reason_codes,
+                )
+            else:
+                safe_chunks.append(chunk)
+        return safe_chunks
+
+    async def _clarification_path(
+        self, state: WorkflowState, question: str, hazards: list[str]
+    ) -> None:
+        if hazards:
+            # Belt and braces: the intent agent already retries on a flagged hazard. If it
+            # still would not log, never ask — hand the report to a manager instead.
+            state.outcome = "HUMAN_REVIEW"
+            state.final_response = "A facility manager will review this request."
+            self._record(
+                state,
+                "human_review",
+                {"intent": Intent.NEEDS_CLARIFICATION.value, "hazards": hazards},
+                ["HAZARD_CLARIFICATION_BLOCKED", "MANUAL_TRIAGE"],
+            )
+            return
+        # An ambiguous message still deserves an answer, not just a question back.
+        # Retrieve approved context and lead with it, then ask.
+        safe_chunks = await self._retrieve_safe_chunks(state, state.effective_text)
+        chunks_data = [c.model_dump(mode="json") for c in safe_chunks]
+        self._record(
+            state,
+            "clarification_retrieval",
+            {"chunks": chunks_data, "count": len(chunks_data)},
+            ["APPROVED_CONTEXT_RETRIEVED"] if chunks_data else ["NO_APPROVED_CONTEXT"],
+        )
+
+        message = question
+        citations: list[str] = []
+        if chunks_data:
+            self._check_bounds(state, model_call=True)
+            answer_payload = {"retrieval_chunks": chunks_data, "text": state.effective_text}
+            answer = await self.response.run(answer_payload)
+            self._record_model_output(state, "clarification_answer", answer_payload, answer)
+            validation = self.citation_validator.validate(
+                response_text=answer.message,
+                citations=answer.citations,
+                retrieved_chunks=safe_chunks,
+            )
+            self._record(
+                state,
+                "citation_validation",
+                {
+                    "is_valid": validation.is_valid,
+                    "valid_citations": validation.valid_citations,
+                    "invalid_citations": validation.invalid_citations,
+                    "issues": validation.issues,
+                },
+                validation.reason_codes,
+            )
+            # Only lead with the grounded answer when it actually checks out.
+            if validation.is_valid:
+                message = f"{answer.message}\n\n{question}"
+                citations = answer.citations
+
+        self._record(
+            state,
+            "clarification",
+            {
+                "question": question,
+                "history_turns": len(state.history),
+                "grounded": bool(citations),
+            },
+            ["CLARIFICATION_REQUESTED"],
+        )
+        self._offer_incident(state, question)
+        await self._review_and_finalize(
+            state,
+            message,
+            citations,
+            retrieved_chunks=safe_chunks,
+            response_type="CLARIFICATION",
+            approved_outcome="NEEDS_CLARIFICATION",
+            citations_verified=bool(citations),
+        )
+
     async def _review_and_finalize(
         self,
         state: WorkflowState,
@@ -684,6 +931,8 @@ class FacilityWorkflow:
         retrieved_chunks: list[Any] | None = None,
         validator_issues: list[str] | None = None,
         response_type: str | None = None,
+        approved_outcome: str = "FINALIZED",
+        citations_verified: bool | None = None,
     ) -> None:
         del retrieved_chunks
         # Output policy check
@@ -706,13 +955,16 @@ class FacilityWorkflow:
             "message": message,
             "citations": citations,
             "reference_code": state.reference_code,
+            # Deterministic result of the citation validator. The reviewer must not
+            # re-litigate grounding that has already been machine-verified.
+            "citations_verified": citations_verified,
             "validator_issues": (validator_issues or [])
             + (output_policy.issues if not output_policy.is_valid else []),
         }
         review = await self.review.run(review_payload)
         self._record_model_output(state, "review", review_payload, review)
         if review.approved and not validator_issues and output_policy.is_valid:
-            state.outcome = "FINALIZED"
+            state.outcome = approved_outcome
             state.final_response = message
             self._record(state, "finalize", {"message": message}, ["REVIEW_APPROVED"])
         else:
@@ -735,7 +987,7 @@ class FacilityWorkflow:
     def _save_run(self, state: WorkflowState) -> None:
         self.runs.save(
             incident_id=state.incident_id,
-            input_text=redact_pii(state.input_text).redacted_text,
+            input_text=redact_pii(state.effective_text).redacted_text,
             outcome=state.outcome,
             final_response=state.final_response,
             trace=[redact_payload(step.model_dump(mode="json")) for step in state.trace],

@@ -1,5 +1,6 @@
+import logging
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import Field
@@ -30,22 +31,48 @@ from app.repositories.postgres.prompts import SqlAlchemyPromptRepository
 from app.repositories.postgres.security_events import PostgresSecurityEventRepository
 from app.security.authentication import CurrentUser, require_manager
 from app.tools import ToolRegistry, register_incident_tools, register_knowledge_tools
-from app.workflows.facility_graph import FacilityWorkflow
+from app.workflows.facility_graph import (
+    MAX_HISTORY_TURN_CHARS,
+    MAX_HISTORY_TURNS,
+    FacilityWorkflow,
+)
 from app.workflows.state import TraceStep
 
+logger = logging.getLogger("app.api.assistant")
+
 router = APIRouter(tags=["assistant"])
+
+
+class HistoryTurn(StrictAgentModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=MAX_HISTORY_TURN_CHARS)
 
 
 class AssistantRequest(StrictAgentModel):
     message: str = Field(min_length=1, max_length=8000)
     location: str | None = Field(default=None, max_length=200)
     include_trace: bool = Field(default=False)
+    # Prior turns of this conversation, oldest first. The client owns the memory; the
+    # API stays stateless and only reads a bounded window.
+    history: list[HistoryTurn] = Field(default_factory=list, max_length=MAX_HISTORY_TURNS)
+    # Set when the occupant answered a pending offer from the previous reply, either by
+    # pressing a button or by letting the countdown expire.
+    confirm_action: Literal["CREATE_INCIDENT", "DECLINE"] | None = Field(default=None)
+
+
+class PendingAction(StrictAgentModel):
+    action: str
+    question: str
+    confirm_label: str
+    cancel_label: str
+    auto_confirm_seconds: int
 
 
 class AssistantResponse(StrictAgentModel):
     outcome: str
     message: str
     reference_code: str | None
+    pending_action: PendingAction | None = Field(default=None)
     trace: list[TraceStep] | None = Field(default=None)
 
 
@@ -181,7 +208,12 @@ async def submit_message(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> AssistantResponse:
     try:
-        state = await build_workflow(db, settings).run(text=body.message, location=body.location)
+        state = await build_workflow(db, settings).run(
+            text=body.message,
+            location=body.location,
+            history=[turn.model_dump() for turn in body.history],
+            confirm_action=body.confirm_action,
+        )
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
@@ -195,6 +227,7 @@ async def submit_message(
         outcome=state.outcome,
         message=state.final_response,
         reference_code=state.reference_code,
+        pending_action=(PendingAction(**state.pending_action) if state.pending_action else None),
         trace=state.trace if body.include_trace else None,
     )
 

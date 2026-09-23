@@ -133,6 +133,16 @@ async def test_intent_agent_records_retry_on_missing_tool_call() -> None:
         handler=handle_create,
     )
 
+    # Turn 1 is the tool-free classification turn; it must decide INCIDENT_REPORT
+    # for the tool-calling turns below to run at all.
+    mock_llm.generate.return_value = IntentOutput(
+        intent=Intent.INCIDENT_REPORT,
+        incident_id=None,
+        reference_code=None,
+        confidence=0.9,
+        reason_codes=["DEFECT"],
+        clarifying_question=None,
+    )
     # First call misses tool, second call also misses tool, then third succeeds
     mock_llm.generate_with_tools.side_effect = [
         ToolCallingResult(
@@ -142,6 +152,7 @@ async def test_intent_agent_records_retry_on_missing_tool_call() -> None:
                 reference_code=None,
                 confidence=0.9,
                 reason_codes=["DEFECT"],
+                clarifying_question=None,
             ),
             tool_calls=[],
             model_calls=1,
@@ -154,6 +165,7 @@ async def test_intent_agent_records_retry_on_missing_tool_call() -> None:
                 reference_code=None,
                 confidence=0.9,
                 reason_codes=["DEFECT"],
+                clarifying_question=None,
             ),
             tool_calls=[],
             model_calls=1,
@@ -166,6 +178,7 @@ async def test_intent_agent_records_retry_on_missing_tool_call() -> None:
                 reference_code=None,
                 confidence=0.8,
                 reason_codes=["OTHER"],
+                clarifying_question=None,
             ),
             tool_calls=[],
             model_calls=1,

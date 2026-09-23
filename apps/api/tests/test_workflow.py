@@ -65,10 +65,13 @@ async def test_intent_router_calls_create_incident_before_downstream_agents() ->
     assert nodes.index("create_incident") < nodes.index("extract")
     assert nodes.index("create_incident") < nodes.index("intent_finalize")
     first_intent_step = next(step for step in state.trace if step.node == "intent")
-    assert first_intent_step.input == {
-        "text": "There is a gas smell near the lift lobby.",
-        "location": "Block B level 2",
-    }
+    # The traced `intent` node is the tool-calling turn, so it carries the decision
+    # that turn 1 already made plus the instruction to log.
+    assert first_intent_step.input is not None
+    assert first_intent_step.input["text"] == "There is a gas smell near the lift lobby."
+    assert first_intent_step.input["location"] == "Block B level 2"
+    assert first_intent_step.input["critical_hazard_detected"] is True
+    assert first_intent_step.input["_decision"]["intent"] == "INCIDENT_REPORT"
     assert "payload" not in first_intent_step.output
     assert first_intent_step.output["function_call"]["name"] == "create_incident"
     intent_step = next(step for step in state.trace if step.node == "intent_finalize")
@@ -128,6 +131,19 @@ async def test_incident_report_without_create_tool_decision_reaches_human_review
 @pytest.mark.asyncio
 async def test_intent_preserves_created_incident_when_final_model_turn_fails() -> None:
     class FailAfterToolLLM:
+        async def generate(self, **kwargs):
+            # Turn 1 classifies; the tool turn below is the one that fails.
+            return kwargs["output_schema"].model_validate(
+                {
+                    "intent": "INCIDENT_REPORT",
+                    "incident_id": None,
+                    "reference_code": None,
+                    "confidence": 0.95,
+                    "reason_codes": ["NEW_DEFECT"],
+                    "clarifying_question": None,
+                }
+            )
+
         async def generate_with_tools(self, **kwargs):
             tool_output = await kwargs["tool_executor"](
                 "create_incident",
@@ -469,3 +485,236 @@ async def test_workflow_trace_redacts_pii() -> None:
     assert "[PHONE REDACTED]" in str(persisted_run["input_text"])
     assert "98765432" not in str(persisted_run["trace"])
     assert "[PHONE REDACTED]" in str(persisted_run["trace"])
+
+
+@pytest.mark.asyncio
+async def test_vague_facility_message_asks_clarifying_question() -> None:
+    workflow, incidents, runs = make_workflow()
+
+    state = await workflow.run(text="Can someone take a look?")
+
+    assert state.outcome == "NEEDS_CLARIFICATION"
+    assert state.final_response.endswith("?")
+    assert state.reference_code is None
+    assert incidents.items == {}
+    nodes = [step.node for step in state.trace]
+    # An ambiguous message retrieves approved context before asking (none here, so the
+    # message is the bare question) and offers to log it.
+    assert nodes == [
+        "security",
+        "intent",
+        "clarification_retrieval",
+        "clarification",
+        "review",
+        "finalize",
+    ]
+    assert state.pending_action is not None
+    assert state.pending_action["action"] == "CREATE_INCIDENT"
+    assert state.pending_action["auto_confirm_seconds"] == 15
+    clarification = next(step for step in state.trace if step.node == "clarification")
+    assert clarification.reason_codes == ["CLARIFICATION_REQUESTED"]
+    review = next(step for step in state.trace if step.node == "review")
+    assert review.input is not None
+    assert review.input["response_type"] == "CLARIFICATION"
+    assert runs.runs[0]["outcome"] == "NEEDS_CLARIFICATION"
+
+
+@pytest.mark.asyncio
+async def test_chit_chat_still_reaches_human_review() -> None:
+    workflow, _, _ = make_workflow()
+
+    state = await workflow.run(text="Tell me a joke about rain.")
+
+    assert state.outcome == "HUMAN_REVIEW"
+
+
+@pytest.mark.asyncio
+async def test_clarification_answer_is_read_with_the_original_report() -> None:
+    workflow, incidents, runs = make_workflow()
+    history = [
+        {"role": "user", "content": "The tap is leaking."},
+        {"role": "assistant", "content": "Which room or floor is the leaking tap in?"},
+    ]
+
+    state = await workflow.run(text="It is in the level 3 pantry.", history=history)
+
+    assert state.outcome == "FINALIZED"
+    assert state.reference_code is not None
+    assert state.effective_text == "The tap is leaking.\nIt is in the level 3 pantry."
+    incident = next(iter(incidents.items.values()))
+    assert "The tap is leaking." in incident.description
+    assert incident.location == "the level 3 pantry"
+    assert incident.category == "PLUMBING"
+    intent_step = next(step for step in state.trace if step.node == "intent")
+    assert intent_step.input is not None
+    assert intent_step.input["history"] == history
+    assert intent_step.input["current_message"] == "It is in the level 3 pantry."
+    # The persisted run keeps the whole conversation the decision was made on.
+    assert runs.runs[0]["input_text"] == state.effective_text
+
+
+@pytest.mark.asyncio
+async def test_history_is_bounded_and_assistant_turns_are_excluded_from_text() -> None:
+    workflow, _, _ = make_workflow()
+    history = [{"role": "user", "content": f"turn {index}"} for index in range(10)]
+    history.append({"role": "assistant", "content": "ignored assistant text"})
+    history.append({"role": "system", "content": "not a valid role"})
+    history.append({"role": "user", "content": "   "})
+
+    state = await workflow.run(text="Hello there", history=history)
+
+    assert len(state.history) == 6
+    assert state.history[0] == {"role": "user", "content": "turn 5"}
+    assert "ignored assistant text" not in state.effective_text
+    assert "not a valid role" not in state.effective_text
+    assert state.effective_text == "turn 5\nturn 6\nturn 7\nturn 8\nturn 9\nHello there"
+
+
+@pytest.mark.asyncio
+async def test_hazard_forces_incident_even_when_model_first_asks_for_clarification() -> None:
+    calls: list[dict] = []
+
+    def intent_handler(payload: dict) -> dict:
+        calls.append(payload)
+        # The model always wants to clarify; the deterministic hazard guard must
+        # override that and drive the create_incident turn anyway.
+        return {
+            "intent": "NEEDS_CLARIFICATION",
+            "incident_id": None,
+            "reference_code": None,
+            "confidence": 0.5,
+            "reason_codes": ["MISSING_LOCATION"],
+            "clarifying_question": "Where is the smell coming from?",
+            # Upstream's fake takes a tool NAME here, not a boolean.
+            "_call_tool": "create_incident" if "_instruction" in payload else None,
+        }
+
+    workflow, incidents, _ = make_workflow(FakeStructuredLLM({"IntentOutput": intent_handler}))
+
+    state = await workflow.run(text="I noticed a gas smell.")
+
+    assert state.outcome == "FINALIZED"
+    assert state.reference_code is not None
+    # Turn 1 classifies with no tool in reach; turn 2 is the forced logging turn.
+    assert len(calls) == 2
+    assert calls[0]["critical_hazard_detected"] is True
+    assert "_instruction" not in calls[0]
+    assert calls[1]["_decision"]["intent"] == "INCIDENT_REPORT"
+    incident = next(iter(incidents.items.values()))
+    assert incident.priority == "P1"
+    assert incident.location == "Unspecified"
+    assert "clarification" not in [step.node for step in state.trace]
+
+
+@pytest.mark.asyncio
+async def test_hazard_never_receives_a_clarifying_question() -> None:
+    provider = FakeStructuredLLM(
+        {
+            "IntentOutput": {
+                "intent": "NEEDS_CLARIFICATION",
+                "incident_id": None,
+                "reference_code": None,
+                "confidence": 0.5,
+                "reason_codes": ["MISSING_LOCATION"],
+                "clarifying_question": "Where is the fire?",
+                "_call_tool": False,
+            }
+        }
+    )
+    workflow, incidents, _ = make_workflow(provider)
+
+    state = await workflow.run(text="There is a fire in the pantry.")
+
+    assert state.outcome == "HUMAN_REVIEW"
+    # The occupant never receives the clarifying question for a hazard.
+    assert state.final_response != "Where is the fire?"
+    assert incidents.items == {}
+    human_review = next(step for step in state.trace if step.node == "human_review")
+    assert "CREATE_INCIDENT_NOT_CALLED" in human_review.reason_codes
+
+
+@pytest.mark.asyncio
+async def test_hazard_word_in_a_question_is_not_logged_as_an_incident() -> None:
+    """ "What do I do when there is a fire?" is a policy question, not a fire."""
+    provider = FakeStructuredLLM(
+        {
+            "IntentOutput": {
+                "intent": "FACILITY_QA",
+                "incident_id": None,
+                "reference_code": None,
+                "confidence": 0.93,
+                "reason_codes": ["POLICY_QUESTION"],
+                "clarifying_question": None,
+            }
+        }
+    )
+    workflow, incidents, _ = make_workflow(provider)
+
+    state = await workflow.run(text="What should I do when there is a fire?")
+
+    # The keyword detector flags this text, but the occupant is asking, not reporting.
+    assert state.reference_code is None
+    assert incidents.items == {}
+    nodes = [step.node for step in state.trace]
+    assert "create_incident" not in nodes
+    assert "faq_retrieval" in nodes
+
+
+@pytest.mark.asyncio
+async def test_confirming_the_offer_creates_the_incident_without_asking_the_model() -> None:
+    workflow, incidents, _ = make_workflow()
+
+    state = await workflow.run(
+        text="yes please",
+        location="Level 3 pantry",
+        history=[
+            {"role": "user", "content": "Can someone take a look?"},
+            {"role": "assistant", "content": "What is wrong, and where?"},
+        ],
+        confirm_action="CREATE_INCIDENT",
+    )
+
+    assert state.reference_code is not None
+    assert len(incidents.items) == 1
+    nodes = [step.node for step in state.trace]
+    # No intent agent turn at all: the decision was already made by the occupant.
+    assert "intent" not in nodes
+    confirmed = next(step for step in state.trace if step.node == "create_incident")
+    assert "OCCUPANT_CONFIRMED" in confirmed.reason_codes
+
+
+@pytest.mark.asyncio
+async def test_declining_the_offer_logs_nothing() -> None:
+    workflow, incidents, runs = make_workflow()
+
+    state = await workflow.run(
+        text="no thanks",
+        history=[{"role": "assistant", "content": "Shall I log this for you?"}],
+        confirm_action="DECLINE",
+    )
+
+    assert state.outcome == "DECLINED"
+    assert state.reference_code is None
+    assert incidents.items == {}
+    assert [step.node for step in state.trace] == ["declined"]
+    assert runs.runs[0]["outcome"] == "DECLINED"
+
+
+@pytest.mark.asyncio
+async def test_already_ticketed_turns_do_not_get_logged_again() -> None:
+    """A fire reported earlier must not make a later fire QUESTION file a second ticket."""
+    workflow, incidents, _ = make_workflow()
+    history = [
+        {"role": "user", "content": "there is fire in block b"},
+        {
+            "role": "assistant",
+            "content": "We have received your report. Reference BFA-MS9ZNWB4JG. P1.",
+        },
+    ]
+
+    state = await workflow.run(text="what are the building hours?", history=history)
+
+    # The settled report is dropped from the text the agents classify.
+    assert "fire in block b" not in state.effective_text
+    assert state.effective_text == "what are the building hours?"
+    assert incidents.items == {}
