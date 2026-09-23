@@ -1,7 +1,11 @@
+import logging
+
 from app.domain.incidents.models import Incident, IncidentCreate
-from app.domain.incidents.policies import can_transition_status
+from app.domain.incidents.policies import can_transition_status, is_unspecified_location
 from app.rag.embeddings import EmbeddingProvider
 from app.repositories.interfaces.incidents import IncidentRepository
+
+logger = logging.getLogger(__name__)
 
 
 class InvalidStatusTransitionError(ValueError):
@@ -16,14 +20,23 @@ class IncidentService:
         self.embeddings = embeddings
 
     async def create(self, data: IncidentCreate) -> Incident:
-        location_embedding = (
-            await self.embeddings.embed_query(data.location) if self.embeddings else None
-        )
+        location_embedding = await self._embed_location(data.location)
         return self.repository.create(
             description=data.description,
             location=data.location,
             location_embedding=location_embedding,
         )
+
+    async def _embed_location(self, location: str) -> list[float] | None:
+        # Best-effort: the embedding only powers find_recent_incidents pattern matching,
+        # so a provider outage must never cost the occupant their report.
+        if self.embeddings is None or is_unspecified_location(location):
+            return None
+        try:
+            return await self.embeddings.embed_query(location)
+        except Exception:
+            logger.warning("Location embedding failed; storing incident without it", exc_info=True)
+            return None
 
     def update_status(
         self, incident_id: str, target_status: str, *, reason: str

@@ -98,6 +98,17 @@ def test_pii_redaction() -> None:
     assert "[EMAIL REDACTED]" in redacted_dict["details"]["email"]
 
 
+def test_pii_redaction_preserves_uuids() -> None:
+    # A UUID segment like "9017-4052" would otherwise be read as a phone number,
+    # corrupting incident IDs the model is asked to echo back.
+    incident_id = "0a35a208-9017-4052-983d-f526c81c95a0"
+    result = PIIRedactor().redact(f"Incident {incident_id}, call 91234567")
+
+    assert incident_id in result.redacted_text
+    assert "[PHONE REDACTED]" in result.redacted_text
+    assert redact_payload({"incident_id": incident_id}) == {"incident_id": incident_id}
+
+
 def test_output_policy_validation() -> None:
     validator = OutputPolicyValidator()
 

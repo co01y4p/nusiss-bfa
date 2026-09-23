@@ -348,7 +348,9 @@ async def test_recent_incidents_feed_classification_priority_and_assignment_cont
     assert lookup_steps[0].output["called"] is True
     assert lookup_steps[0].output["count"] == 1
     assert lookup_steps[0].output["assigned_teams"]
-    assert lookup_steps[0].output["notes"] == ["Electrician dispatched, awaiting parts"]
+    # Manager notes about other occupants' incidents reach the agents, never the trace.
+    assert lookup_steps[0].output["notes_count"] == 1
+    assert "Electrician dispatched" not in str(lookup_steps[0].output)
 
     priority_calls = [c for c in provider.calls if c["schema"] == "PrioritySignalOutput"]
     priority_matches = priority_calls[-1]["payload"]["recent_similar_incidents"]
@@ -394,6 +396,55 @@ async def test_recent_incidents_matches_same_floor_different_room() -> None:
     assert lookup_steps[0].output["called"] is True
     # Matches the Room 402 report (same-floor pattern), not the unrelated basement one.
     assert lookup_steps[0].output["count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_recent_incident_lookup_never_matches_its_own_report() -> None:
+    # The model only sees a PII-redacted payload, so the exclude ID it echoes back
+    # can be mangled or missing. The agent pins it to the real incident ID.
+    def classify_handler(payload: dict) -> dict:
+        return {
+            "category": "PLUMBING",
+            "confidence": 0.9,
+            "reason_codes": ["FAKE_RULE"],
+            "_call_tool": "find_recent_incidents",
+            "_call_tool_args": {
+                "location": payload["location"],
+                "exclude_incident_id": "0a35a208-[PHONE REDACTED]-983d-f526c81c95a0",
+            },
+        }
+
+    provider = FakeStructuredLLM(handlers={"ClassificationOutput": classify_handler})
+    workflow, _, _ = make_workflow(provider)
+
+    state = await workflow.run(text="The sink is leaking.", location="Block B Level 2")
+
+    lookup_steps = [step for step in state.trace if step.node == "recent_incident_lookup"]
+    assert lookup_steps[0].output["called"] is True
+    assert lookup_steps[0].output["count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_find_recent_incidents_ignores_unspecified_locations() -> None:
+    # Placeholder locations embed identically, so without a guard every
+    # location-less report would "match" every other one at similarity 1.0.
+    incidents = InMemoryIncidentRepository()
+    tools = ToolRegistry()
+    register_incident_tools(tools, incidents, FakeEmbeddings(dim=1536))
+    for text in ("The sink is leaking.", "The tap is dripping."):
+        created = await tools.execute(
+            "create_incident",
+            {"description": text, "location": "Unspecified"},
+            caller_role="SYSTEM",
+        )
+        assert created.success
+
+    result = await tools.execute(
+        "find_recent_incidents", {"location": "Unspecified"}, caller_role="SYSTEM"
+    )
+
+    assert result.success
+    assert result.data == []
 
 
 @pytest.mark.asyncio

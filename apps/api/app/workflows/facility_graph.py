@@ -465,9 +465,9 @@ class FacilityWorkflow:
                 "assigned_teams": sorted(
                     {m["assigned_team"] for m in recent_incidents if m.get("assigned_team")}
                 ),
-                "notes": [
-                    m["override_reason"] for m in recent_incidents if m.get("override_reason")
-                ],
+                # Count only: override_reason is free text written by managers about
+                # other occupants' incidents and must not reach the public trace.
+                "notes_count": sum(1 for m in recent_incidents if m.get("override_reason")),
             },
             reason_codes,
             input=tool_call.model_input if tool_call is not None else classify_payload,
