@@ -47,6 +47,14 @@ class ClassificationAgent(BaseAgent[ClassificationOutput]):
 
     async def run(self, payload: dict[str, Any]) -> ClassificationOutput:
         registry = self.tools
+        # The model sees a PII-redacted copy of the payload, so any ID or location it
+        # echoes back may be mangled (e.g. a UUID segment redacted as a phone number).
+        # Pin the lookup to this report's own values from the trusted, unredacted payload
+        # so a report can never match itself.
+        pinned_arguments = {
+            "location": payload.get("location"),
+            "exclude_incident_id": payload.get("incident_id"),
+        }
 
         async def execute_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             if registry is None:
@@ -55,6 +63,11 @@ class ClassificationAgent(BaseAgent[ClassificationOutput]):
                     "data": None,
                     "error": "Tool registry is unavailable",
                     "reason_codes": ["TOOL_REGISTRY_UNAVAILABLE"],
+                }
+            if name == "find_recent_incidents":
+                arguments = {
+                    **arguments,
+                    **{k: v for k, v in pinned_arguments.items() if v is not None},
                 }
             result = await registry.execute(name, arguments, caller_role="SYSTEM")
             return result.model_dump(mode="json")

@@ -612,9 +612,12 @@ function getHighlightedAttributes(
     if (assignedTeams && assignedTeams.length) {
       attrs.push({ label: "Teams Involved", value: assignedTeams.join(", ") });
     }
-    const notes = asArray(output.notes);
-    if (notes && notes.length) {
-      attrs.push({ label: "Operational Notes", value: notes.join("; ") });
+    const notesCount = asNumber(output.notes_count) ?? 0;
+    if (notesCount > 0) {
+      attrs.push({
+        label: "Operational Notes",
+        value: `${notesCount} match(es) carry a manager note (shared with agents only)`,
+      });
     }
     attrs.push({ label: "Tool", value: "find_recent_incidents (SYSTEM role)" });
   } else if (node === "status_lookup") {

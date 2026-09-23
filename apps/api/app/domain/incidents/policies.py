@@ -58,3 +58,24 @@ ALLOWED_STATUS_TRANSITIONS: dict[str, set[str]] = {
 
 def can_transition_status(current: str, target: str) -> bool:
     return current == target or target in ALLOWED_STATUS_TRANSITIONS.get(current, set())
+
+
+# Placeholder locations carry no positional information; embedding them would make
+# every location-less report "match" every other one at similarity 1.0.
+_UNSPECIFIED_LOCATIONS = {
+    "",
+    "unspecified",
+    "unknown",
+    "not specified",
+    "not provided",
+    "n/a",
+    "na",
+    "none",
+    "null",
+}
+
+
+def is_unspecified_location(location: str | None) -> bool:
+    if location is None:
+        return True
+    return location.strip().strip(".").lower() in _UNSPECIFIED_LOCATIONS

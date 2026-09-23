@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.incidents.models import IncidentCreate
+from app.domain.incidents.policies import is_unspecified_location
 from app.rag.embeddings import EmbeddingProvider
 from app.repositories.interfaces.incidents import IncidentRepository
 from app.services.incident_service import IncidentService
@@ -119,6 +120,8 @@ def register_incident_tools(
     async def find_recent_incidents(
         args: FindRecentIncidentsInput,
     ) -> list[dict[str, str | None]]:
+        if is_unspecified_location(args.location):
+            return []
         since = datetime.now(UTC) - timedelta(hours=args.lookback_hours)
         location_embedding = await embeddings.embed_query(args.location)
         matches = incident_repo.find_similar(
