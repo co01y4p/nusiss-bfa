@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import time
 from abc import ABC, abstractmethod
 from typing import Any, Generic, TypeVar
@@ -11,6 +12,8 @@ from app.monitoring.metrics import (
     record_schema_validation_failure,
 )
 from app.prompts import load_prompt
+
+logger = logging.getLogger("app.agents.base")
 
 
 class StrictAgentModel(BaseModel):
@@ -58,6 +61,12 @@ class BaseAgent(ABC, Generic[AgentOutputT]):  # noqa: UP046
             return output
         except Exception as exc:
             duration = time.perf_counter() - start_time
+            logger.warning(
+                "Agent '%s' failed after %.2fs, executing fallback: %r",
+                self.name,
+                duration,
+                exc,
+            )
             if isinstance(exc, ValidationError):
                 record_schema_validation_failure(self.name)
             record_agent_run(self.name, status="fallback", duration_seconds=duration)

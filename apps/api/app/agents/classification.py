@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import time
 from enum import StrEnum
 from typing import Any
@@ -9,6 +10,8 @@ from app.agents.base import BaseAgent, StrictAgentModel
 from app.llm.gateway import FunctionCallRecord, StructuredLLM
 from app.monitoring.metrics import record_agent_run, record_schema_validation_failure
 from app.tools.registry import ToolRegistry
+
+logger = logging.getLogger("app.agents.classification")
 
 
 class IncidentCategory(StrEnum):
@@ -98,6 +101,12 @@ class ClassificationAgent(BaseAgent[ClassificationOutput]):
             return result.output
         except Exception as exc:
             duration = time.perf_counter() - start_time
+            logger.warning(
+                "Agent '%s' failed after %.2fs, executing fallback: %r",
+                self.name,
+                duration,
+                exc,
+            )
             self.tool_calls = []
             if isinstance(exc, ValidationError):
                 record_schema_validation_failure(self.name)
