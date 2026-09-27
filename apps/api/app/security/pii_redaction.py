@@ -56,8 +56,8 @@ class PIIRedactor:
                 redactions_count=0,
             )
 
-        # Protect internal IDs (UUIDs) and public reference codes from false-positive
-        # phone/id matches, e.g. a UUID segment like "9017-4052" read as a phone number.
+        # Protect internal IDs (UUIDs), public reference codes, and official facility
+        # public hotline numbers (+65 6789 XXXX) from false-positive PII matches.
         ref_tokens: dict[str, str] = {}
 
         def _protect_ref(m: re.Match[str]) -> str:
@@ -66,7 +66,7 @@ class PIIRedactor:
             return token
 
         redacted = re.sub(
-            r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b|\bBFA-[A-Z0-9]{6,12}\b",
+            r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b|\bBFA-[A-Z0-9]{6,12}\b|\b(?:\+?65[-.\s]?)?6789[-.\s]?\d{4}\b",
             _protect_ref,
             text,
             flags=re.IGNORECASE,

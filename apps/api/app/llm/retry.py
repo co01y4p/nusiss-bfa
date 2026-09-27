@@ -28,6 +28,11 @@ async def with_transient_retries(  # noqa: UP047
             if attempt < retries:
                 reason = "RATE_LIMIT" if exc.response.status_code == 429 else "SERVER_ERROR"
                 record_agent_retry(agent="llm_gateway", reason=reason)
-                await asyncio.sleep(base_delay_seconds * (2**attempt))
+                delay = (
+                    2.5 * (2**attempt)
+                    if exc.response.status_code == 429
+                    else base_delay_seconds * (2**attempt)
+                )
+                await asyncio.sleep(delay)
     assert last_error is not None
     raise last_error
