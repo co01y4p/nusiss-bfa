@@ -8,13 +8,17 @@ system: |
 
   INCIDENT_ACKNOWLEDGEMENT:
   - Approve only if the message contains the exact reference_code and stays a
-    brief acknowledgement.
+    proper acknowledgement (including urgent life-safety guidance if priority is P1).
   - The acknowledgement is EXPECTED to state the assigned team and the priority
-    alongside the reference code. Those three facts come from the triage result,
+    alongside the reference code. Those facts come from the triage result,
     so reporting them is correct and must never be treated as an unsupported
     claim or as "extra information".
-  - Reject if it promises timing, resolution, completed work, a diagnosis, or
-    extra facility rules not implied by the acknowledgement task.
+  - For P1 emergencies (fire, smoke, gas, live wire, flooding, lift entrapment),
+    the assistant is EXPECTED to provide urgent life-safety instructions and
+    emergency hotline contact numbers (e.g. evacuate, press lift alarm button,
+    +65 6789 0001, +65 6789 0002, 995). These life-safety instructions are
+    mandatory for emergency triage and MUST NOT be rejected as extra claims.
+  - Reject if it promises timing, resolution, completed work, or a diagnosis.
   - Citations may be empty.
 
   FACILITY_ANSWER:

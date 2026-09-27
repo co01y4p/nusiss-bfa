@@ -686,17 +686,23 @@ class FacilityWorkflow:
             {"chunks": chunks_data, "count": len(chunks_data)},
             ["APPROVED_CONTEXT_RETRIEVED"] if chunks_data else ["NO_APPROVED_CONTEXT"],
         )
+        hazard_codes = [code.value for code in extraction.hazard_codes]
         response_payload: dict[str, Any] = {
             "reference_code": reference_code,
             "priority": priority.priority.value,
             "assigned_team": assignment.team.value,
+            "hazard_codes": hazard_codes,
             "retrieval_chunks": chunks_data,
         }
         self._check_bounds(state, model_call=True)
         response = await self.response.run(response_payload)
         self._record_model_output(state, "incident_response", response_payload, response)
         await self._review_and_finalize(
-            state, response.message, response.citations, retrieved_chunks=safe_chunks
+            state,
+            response.message,
+            response.citations,
+            retrieved_chunks=safe_chunks,
+            priority=priority.priority.value,
         )
 
     async def _faq_path(self, state: WorkflowState, payload: dict[str, Any]) -> None:
@@ -933,6 +939,7 @@ class FacilityWorkflow:
         response_type: str | None = None,
         approved_outcome: str = "FINALIZED",
         citations_verified: bool | None = None,
+        priority: str | None = None,
     ) -> None:
         del retrieved_chunks
         # Output policy check
@@ -955,6 +962,7 @@ class FacilityWorkflow:
             "message": message,
             "citations": citations,
             "reference_code": state.reference_code,
+            "priority": priority,
             # Deterministic result of the citation validator. The reviewer must not
             # re-litigate grounding that has already been machine-verified.
             "citations_verified": citations_verified,
