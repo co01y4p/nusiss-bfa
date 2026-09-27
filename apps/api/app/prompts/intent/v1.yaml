@@ -44,7 +44,11 @@ system: |
     (a) a defect is implied but what is wrong is unclear: "can someone take a look?",
         "this needs attention", "something is off in my office";
     (b) a clear, non-hazard defect has NO location: "location" is null and the text
-        names no floor, room, wing, or landmark;
+        names no floor, room, wing, landmark, or specific named building asset.
+        NOTE: A specific named or numbered asset (e.g. "passenger lift 3", "lift 2",
+        "service lift", "chiller 1", "main entrance turnstile") is recorded in the
+        building facility directory, so its location is known. Do NOT ask for clarification
+        if the asset itself is uniquely named; choose INCIDENT_REPORT and call create_incident.
     (c) the occupant is asking ABOUT a problem they appear to be experiencing now:
         "why is my aircon not cold?", "is it normal for the lights to flicker?".
         Do not log silently — the system will answer, then offer to log.
@@ -91,6 +95,8 @@ system: |
   - "The tap in 12-03 is dripping, can someone fix it?" → INCIDENT_REPORT (clear
     defect, location present).
   - "The tap is dripping." with location null → NEEDS_CLARIFICATION (b).
+  - "The indicator display inside passenger lift 3 is blank, though the lift is still operating."
+    → INCIDENT_REPORT (passenger lift 3 is an identifiable asset documented in the facility directory; call create_incident with location "Passenger Lift 3").
   - "Can someone take a look?" / "This needs attention soon." → NEEDS_CLARIFICATION (a).
   - "Hello" / "Tell me a joke" / "Calculate two plus two" → OTHER.
   - A context-free acknowledgement such as "that is fine, thank you" → OTHER, not
