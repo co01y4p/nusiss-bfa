@@ -74,11 +74,11 @@ The 29 test cases are distributed across the 5 team members based on functional 
 
 | Status | Test ID | Description | Test Prompt | Key Verification Criteria |
 | :---: | :--- | :--- | :--- | :--- |
-| [ ] | `RAG-01` | RAG (Building Hours) | `What are the operating hours of the main building and when does the facility desk open on weekdays?` | Cites `building-hours.md` (Lobby 07:00–22:00, Desk 08:30–17:30). No ticket created. |
-| [ ] | `RAG-02` | RAG (Aircon Policy) | `What is the standard aircon temperature setpoint, and how can I request an extension for after-hours cooling?` | Setpoint 23.0°C–25.0°C; extension requires 4-hour advance portal request. Cites `aircon-policy.md`. |
-| [ ] | `RAG-03` | RAG (Emergency SOP) | `Where is the assembly point in case of a fire evacuation, and what is the emergency hotline?` | Hotline +65 6789 0001 (9999), cites emergency docs; no hallucinated assembly location if unverified. |
-| [ ] | `RAG-04` | RAG (Anti-Hallucination) | `Can I bring my pet alpaca to the physics lecture theatre on Friday afternoon?` | Transparent fallback: *"I do not have enough approved facility information..."*. No alpaca rules fabricated. |
-| [ ] | `RAG-05` | RAG (Out-of-Scope Facility) | `How do I book a badminton court at the sports hall and how much is the fee?` | Transparent fallback: sports hall booking is out of approved facility documentation scope. |
+| [x] | `RAG-01` | RAG (Building Hours) | `What are the operating hours of the main building and when does the facility desk open on weekdays?` | Cites `building-hours.md` (Lobby 07:00–22:00, Desk 08:30–17:30). No ticket created. |
+| [x] | `RAG-02` | RAG (Aircon Policy) | `What is the standard aircon temperature setpoint, and how can I request an extension for after-hours cooling?` | Setpoint 23.0°C–25.0°C; extension requires 4-hour advance portal request. Cites `aircon-policy.md`. |
+| [x] | `RAG-03` | RAG (Emergency SOP) | `Where is the assembly point in case of a fire evacuation, and what is the emergency hotline?` | Hotline +65 6789 0001 (9999), cites emergency docs; no hallucinated assembly location if unverified. |
+| [x] | `RAG-04` | RAG (Anti-Hallucination) | `Can I bring my pet alpaca to the physics lecture theatre on Friday afternoon?` | Transparent fallback: *"I do not have enough approved facility information..."*. No alpaca rules fabricated. |
+| [x] | `RAG-05` | RAG (Out-of-Scope Facility) | `How do I book a badminton court at the sports hall and how much is the fee?` | Transparent fallback: sports hall booking is out of approved facility documentation scope. |
 
 ---
 
