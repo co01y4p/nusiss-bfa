@@ -1014,6 +1014,9 @@ async def test_a_failed_security_model_is_never_exempted() -> None:
 
     state = await workflow.run(text=SELF_CORRECTION)
 
-    assert state.outcome == "QUARANTINED"
+    # Not exempted: the request is not processed. (It is reported as an unavailable security
+    # check rather than an attack; see test_failure_injection.py.)
+    assert state.outcome == "HUMAN_REVIEW"
+    assert state.incident_id is None
     security = next(step for step in state.trace if step.node == "security")
     assert "FAIL_CLOSED" in security.reason_codes

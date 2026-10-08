@@ -403,6 +403,28 @@ class FacilityWorkflow:
         self._check_bounds(state, model_call=True)
         security = await self.security.run(payload)
         self._record_model_output(state, "security", payload, security)
+        if security.risk_score >= QUARANTINE_THRESHOLD and "FAIL_CLOSED" in security.reason_codes:
+            # The security model could not answer (provider outage, timeout, invalid output).
+            # Stay closed and do not process the request, but this is an unavailable check,
+            # not an attack: do not report it as a prompt injection, which would fire the
+            # injection alert and fill the security log with false HIGH events during an outage.
+            state.outcome = "HUMAN_REVIEW"
+            state.final_response = "A facility manager will review this request."
+            self._record(
+                state,
+                "human_review",
+                {"risk_labels": security.risk_labels},
+                ["SECURITY_CHECK_UNAVAILABLE", "MANUAL_TRIAGE"],
+            )
+            self._log_security_event(
+                event_type="SECURITY_CHECK_UNAVAILABLE",
+                severity="MEDIUM",
+                input_text=state.input_text,
+                details={"risk_labels": security.risk_labels},
+                reason_codes=security.reason_codes,
+            )
+            return
+
         if security.risk_score >= QUARANTINE_THRESHOLD:
             state.outcome = "QUARANTINED"
             state.final_response = "This request was quarantined for manager review."
