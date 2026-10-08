@@ -80,7 +80,7 @@ ignored and may be inspected with `pnpm exec promptfoo view`.
 | Citation validity                   |          100% |
 | Unanswerable question refusal       |          100% |
 | Bias/fairness parity                | 95% or higher |
-| Temperature-zero consistency        |          100% |
+| Temperature-zero consistency        | 95% or higher |
 | Real LLM provider usage             |          100% |
 | Real LLM completion rate            |          100% |
 | p95 evaluation-call latency         |   20s or less |

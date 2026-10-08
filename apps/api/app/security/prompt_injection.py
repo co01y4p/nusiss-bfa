@@ -3,6 +3,30 @@ from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# An occupant correcting their OWN earlier message ("forget my earlier message, the leak is
+# actually in room 302"). The model-based security check treats the word "forget" as an
+# instruction override, which quarantines an ordinary correction.
+SELF_CORRECTION_PATTERN = re.compile(
+    r"\b(?:forget|ignore|disregard|scrap|cancel)\s+(?:about\s+)?"
+    r"(?:that|what\s+i\s+(?:said|wrote|reported)|(?:my|the)\s+"
+    r"(?:earlier|previous|last|first|original)\s+(?:message|report|request|text|note))\b",
+    re.IGNORECASE,
+)
+
+# Words that aim a request at the assistant itself. A self-correction that also contains any
+# of them is never exempted.
+ATTACK_TARGET_PATTERN = re.compile(
+    r"\b(?:instructions?|rules?|prompts?|system|developer|jailbreak|persona|role|mode|"
+    r"unrestricted|unfiltered|polic(?:y|ies)|restrictions?|guardrails?|filters?|"
+    r"api\s*keys?|secrets?|passwords?|tokens?|credentials?)\b",
+    re.IGNORECASE,
+)
+
+
+def is_benign_self_correction(text: str) -> bool:
+    """True for a plain correction of the occupant's own earlier message."""
+    return bool(SELF_CORRECTION_PATTERN.search(text)) and not ATTACK_TARGET_PATTERN.search(text)
+
 
 class InjectionScore(BaseModel):
     model_config = ConfigDict(extra="forbid")

@@ -3,12 +3,14 @@ from typing import Any
 from pydantic import Field
 
 from app.agents.base import BaseAgent, StrictAgentModel
-from app.security.prompt_injection import PromptInjectionDetector
+from app.security.prompt_injection import PromptInjectionDetector, is_benign_self_correction
 
 QUARANTINE_THRESHOLD = 0.8
 # Ceiling applied to a model-only risk score when the deterministic hazard check has
 # flagged a life-safety report. Keeps the report below the quarantine threshold.
 LIFE_SAFETY_RISK_CEILING = 0.5
+# Same idea for a plain correction of the occupant's own earlier message.
+SELF_CORRECTION_RISK_CEILING = 0.5
 
 
 class SecurityOutput(StrictAgentModel):
@@ -50,7 +52,31 @@ class SecurityAgent(BaseAgent[SecurityOutput]):
             )
         except Exception as exc:
             output = self.fallback(payload, exc)
-        return self._protect_life_safety_report(payload, output)
+        output = self._protect_life_safety_report(payload, output)
+        return self._allow_self_correction(payload, output)
+
+    @staticmethod
+    def _allow_self_correction(payload: dict[str, Any], output: SecurityOutput) -> SecurityOutput:
+        """Do not quarantine "forget my earlier message" on the model's suspicion alone.
+
+        Only reached when the deterministic heuristics found nothing. The exemption is
+        narrow: it needs an explicit reference to the occupant's own earlier
+        message/report/request and none of the words that target the assistant itself
+        (instructions, rules, prompt, system, role, secrets, ...).
+        """
+        if output.risk_score < QUARANTINE_THRESHOLD:
+            return output
+        # BaseAgent.run turns a model failure into a fail-closed result instead of raising.
+        # That means "the model did not answer", which must never be exempted.
+        if "FAIL_CLOSED" in output.reason_codes or "SECURITY_AGENT_FAILURE" in output.risk_labels:
+            return output
+        if not is_benign_self_correction(str(payload.get("text", ""))):
+            return output
+        return SecurityOutput(
+            risk_score=min(output.risk_score, SELF_CORRECTION_RISK_CEILING),
+            risk_labels=output.risk_labels,
+            reason_codes=sorted({*output.reason_codes, "SELF_CORRECTION_NOT_QUARANTINED"}),
+        )
 
     @staticmethod
     def _protect_life_safety_report(
