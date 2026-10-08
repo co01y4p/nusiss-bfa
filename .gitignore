@@ -16,4 +16,6 @@ htmlcov/
 *.db
 evals/promptfoo/results-*.json
 backups/
-.env.production
+.env.*
+!.env.example
+!.env.production.example

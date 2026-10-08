@@ -1,0 +1,13 @@
+# Gitleaks configuration (used by .github/workflows/security.yml).
+title = "nusiss-bfa"
+
+[extend]
+useDefault = true
+
+# Allowlisting is for known false positives (for example fake credentials in tests).
+# Every entry needs a comment with the reason, the owner and the date it was added.
+# Never allowlist a real secret to make CI pass: rotate it first.
+#
+# [allowlist]
+# description = "reviewed false positives"
+# regexes = ['''<pattern>''']

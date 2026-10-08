@@ -1,0 +1,110 @@
+name: Security scans
+
+# Runs on every pull request regardless of which paths changed (unlike ci.yml), on pushes
+# to master, and weekly to catch vulnerabilities published after the code was merged.
+# Each job is a plain command with a pinned tool, so it can be reproduced locally exactly
+# as written here (see docs/runbooks/security-scans.md).
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  schedule:
+    - cron: "0 1 * * 1" # Mondays 01:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secrets:
+    name: Secret scan (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # scan the full history, not just the latest commit
+      - name: Scan history for committed secrets
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.24.2 \
+            detect --source /repo --config /repo/.gitleaks.toml \
+            --redact --verbose --exit-code 1
+
+  python-deps:
+    name: Python dependencies (pip-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install the API's runtime dependencies into a clean environment
+        run: |
+          python -m venv /tmp/api-env
+          /tmp/api-env/bin/pip install --quiet ./apps/api
+      - name: Audit them for known vulnerabilities
+        run: |
+          pip install --quiet pip-audit==2.9.0
+          pip-audit --path /tmp/api-env/lib/python3.13/site-packages
+
+  node-deps:
+    name: Node dependencies (pnpm audit)
+    runs-on: ubuntu-latest
+    # evals/promptfoo is a test runner that never ships and whose findings are in deep
+    # transitive dependencies of a pinned third-party tool: report them, don't block on them.
+    continue-on-error: ${{ matrix.advisory }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project: apps/web
+            advisory: false
+          - project: evals/promptfoo
+            advisory: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Audit ${{ matrix.project }} (fail on high or critical)
+        working-directory: ${{ matrix.project }}
+        run: pnpm audit --audit-level=high
+
+  sast:
+    name: Static analysis (Semgrep)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan source for insecure patterns (fail on error severity)
+        run: |
+          docker run --rm -v "$PWD:/src" semgrep/semgrep:1.119.0 \
+            semgrep scan --metrics=off --error --severity ERROR \
+            --config p/python --config p/typescript --config p/owasp-top-ten \
+            --exclude node_modules --exclude .next --exclude apps/api/tests \
+            --exclude evals/promptfoo/results-*.json \
+            /src
+
+  images:
+    name: Container images (Trivy)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [api, web]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build ${{ matrix.image }}
+        run: docker build -t bfa-${{ matrix.image }}:scan apps/${{ matrix.image }}
+      - name: Scan for high and critical vulnerabilities that have a fix
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:0.62.1 image --quiet --severity HIGH,CRITICAL \
+            --ignore-unfixed --exit-code 1 bfa-${{ matrix.image }}:scan
