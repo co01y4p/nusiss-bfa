@@ -1,0 +1,171 @@
+# promtool unit tests for alerts.yml. Each case feeds synthetic metrics and states which
+# alerts must (or must not) be firing, so the rules are verified without causing an outage.
+#   docker run --rm --entrypoint promtool -v "$PWD/infra/monitoring/prometheus:/p" \
+#     prom/prometheus:v3.2.1 test rules /p/alerts_test.yml
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: ApiDown fires after a minute without scrapes
+    interval: 1m
+    input_series:
+      - series: 'up{job="bfa-api"}'
+        values: '1 1 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: ApiDown
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: ApiDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: bfa-api
+            exp_annotations:
+              summary: The API is not reachable by Prometheus
+              description: Prometheus has failed to scrape the API for over a minute.
+
+  - name: ApiDown watches only the bfa-api job (an optional host job being down is ignored)
+    interval: 1m
+    input_series:
+      - series: 'up{job="bfa-api-host"}'
+        values: '0 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: ApiDown
+        exp_alerts: []
+
+  - name: circuit breaker open for over a minute
+    interval: 1m
+    input_series:
+      - series: 'llm_circuit_breaker_state{breaker="llm"}'
+        values: '0 0 2 2 2 2'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: LLMCircuitBreakerOpen
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: LLMCircuitBreakerOpen
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: The LLM circuit breaker has been open for over a minute
+              description: Repeated model failures opened the breaker. The assistant is falling back to manual review. See docs/runbooks/model-outage.md.
+
+  - name: a brief half-open blip does not alert
+    interval: 1m
+    input_series:
+      - series: 'llm_circuit_breaker_state{breaker="llm"}'
+        values: '0 1 0 1 0 0 0'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: LLMCircuitBreakerOpen
+        exp_alerts: []
+
+  - name: high human review rate needs sustained share and enough traffic
+    interval: 1m
+    input_series:
+      - series: 'workflow_runs_total{outcome="HUMAN_REVIEW"}'
+        values: '0+4x20'
+      - series: 'workflow_runs_total{outcome="FINALIZED"}'
+        values: '0+4x20'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: HighHumanReviewRate
+        exp_alerts: []
+      - eval_time: 19m
+        alertname: HighHumanReviewRate
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: Over 30% of assistant requests are being sent to manual review
+              description: Usually a model outage, a bad prompt change, or an over-strict output check. Compare with the circuit breaker panel.
+
+  - name: a low review rate does not alert
+    interval: 1m
+    input_series:
+      - series: 'workflow_runs_total{outcome="HUMAN_REVIEW"}'
+        values: '0+1x20'
+      - series: 'workflow_runs_total{outcome="FINALIZED"}'
+        values: '0+9x20'
+    alert_rule_test:
+      - eval_time: 19m
+        alertname: HighHumanReviewRate
+        exp_alerts: []
+
+  - name: agent fallback spike
+    interval: 1m
+    input_series:
+      - series: 'agent_runs_total{agent="intent",status="fallback"}'
+        values: '0 0 5 10 15 20 25 30'
+      - series: 'agent_runs_total{agent="intent",status="success"}'
+        values: '0+10x7'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: AgentFallbackSpike
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: AgentFallbackSpike
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: Agents are falling back to their deterministic defaults
+              description: More than 10 agent fallbacks in 5 minutes means model calls are timing out or returning invalid output.
+
+  - name: assistant p95 latency over 30 seconds
+    interval: 1m
+    input_series:
+      # 100 requests per minute, every one slower than 30s (lands in the 60s bucket)
+      - series: 'http_request_duration_seconds_bucket{path="/api/v1/assistant/messages",le="30.0"}'
+        values: '0x12'
+      - series: 'http_request_duration_seconds_bucket{path="/api/v1/assistant/messages",le="60.0"}'
+        values: '0+100x12'
+      - series: 'http_request_duration_seconds_bucket{path="/api/v1/assistant/messages",le="+Inf"}'
+        values: '0+100x12'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: AssistantP95LatencyHigh
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: AssistantP95LatencyHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: The assistant 95th percentile response time is over 30 seconds
+              description: Occupants are waiting too long. Check provider latency and the agent duration panel.
+
+  - name: fast assistant responses do not alert
+    interval: 1m
+    input_series:
+      - series: 'http_request_duration_seconds_bucket{path="/api/v1/assistant/messages",le="30.0"}'
+        values: '0+100x12'
+      - series: 'http_request_duration_seconds_bucket{path="/api/v1/assistant/messages",le="+Inf"}'
+        values: '0+100x12'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: AssistantP95LatencyHigh
+        exp_alerts: []
+
+  - name: injection attempt spike
+    interval: 1m
+    input_series:
+      - series: 'security_events_total{event_type="DIRECT_PROMPT_INJECTION",severity="HIGH"}'
+        values: '0 0 0 2 4 6 8 8'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: InjectionAttemptSpike
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: InjectionAttemptSpike
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: A burst of prompt-injection attempts was quarantined
+              description: More than 5 quarantined injection attempts in 5 minutes. Review the security_events table for the source.

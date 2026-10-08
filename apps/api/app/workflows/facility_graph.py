@@ -16,7 +16,8 @@ from app.agents.security import QUARANTINE_THRESHOLD, SecurityAgent
 from app.core.config import Settings
 from app.domain.incidents.policies import detect_critical_hazards
 from app.monitoring.langfuse import LangfuseTracer
-from app.monitoring.metrics import record_workflow_run
+from app.monitoring.logging import request_id_var
+from app.monitoring.metrics import record_security_event, record_workflow_run
 from app.rag.citation_validator import CitationValidator
 from app.rag.retriever import KnowledgeRetriever
 from app.repositories.interfaces.incidents import IncidentRepository, WorkflowRunRepository
@@ -242,6 +243,8 @@ class FacilityWorkflow:
         details: dict[str, Any],
         reason_codes: list[str],
     ) -> None:
+        # Counted even when no repository is configured, so alerts do not depend on storage.
+        record_security_event(event_type, severity)
         if self.security_events:
             try:
                 redacted_input = redact_pii(input_text).redacted_text if input_text else None
@@ -278,7 +281,11 @@ class FacilityWorkflow:
         trace_ctx = self.tracer.start_trace(
             name="facility-assistant",
             input_data={"message": normalized, "location": location, "history": turns},
-            metadata={"app_env": self.settings.app_env, "history_turns": len(turns)},
+            metadata={
+                "app_env": self.settings.app_env,
+                "history_turns": len(turns),
+                "request_id": request_id_var.get(),
+            },
             tags=[f"env:{self.settings.app_env}"],
         )
         state = WorkflowState(

@@ -1,0 +1,69 @@
+# Alert rules for the Facilities AI Assistant. Evaluated by Prometheus and shown on its Alerts
+# page (http://localhost:9090/alerts). No notification channel (Alertmanager, email, Slack) is
+# configured: wiring one up is deployment-specific and is not part of this repository.
+#
+# Unit tests: alerts_test.yml  (run: promtool test rules alerts_test.yml)
+groups:
+  - name: bfa-availability
+    rules:
+      - alert: ApiDown
+        expr: up{job="bfa-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: The API is not reachable by Prometheus
+          description: Prometheus has failed to scrape the API for over a minute.
+
+      - alert: LLMCircuitBreakerOpen
+        expr: max(llm_circuit_breaker_state) == 2
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: The LLM circuit breaker has been open for over a minute
+          description: Repeated model failures opened the breaker. The assistant is falling back to manual review. See docs/runbooks/model-outage.md.
+
+  - name: bfa-quality
+    rules:
+      - alert: HighHumanReviewRate
+        expr: |
+          sum(increase(workflow_runs_total{outcome="HUMAN_REVIEW"}[10m]))
+            / clamp_min(sum(increase(workflow_runs_total[10m])), 1) > 0.3
+          and sum(increase(workflow_runs_total[10m])) >= 10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Over 30% of assistant requests are being sent to manual review
+          description: Usually a model outage, a bad prompt change, or an over-strict output check. Compare with the circuit breaker panel.
+
+      - alert: AgentFallbackSpike
+        expr: sum(increase(agent_runs_total{status="fallback"}[5m])) > 10
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Agents are falling back to their deterministic defaults
+          description: More than 10 agent fallbacks in 5 minutes means model calls are timing out or returning invalid output.
+
+      - alert: AssistantP95LatencyHigh
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(http_request_duration_seconds_bucket{path=~"/api/v1/assistant.*"}[5m]))) > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: The assistant 95th percentile response time is over 30 seconds
+          description: Occupants are waiting too long. Check provider latency and the agent duration panel.
+
+  - name: bfa-security
+    rules:
+      - alert: InjectionAttemptSpike
+        expr: sum(increase(security_events_total{event_type="DIRECT_PROMPT_INJECTION"}[5m])) > 5
+        labels:
+          severity: warning
+        annotations:
+          summary: A burst of prompt-injection attempts was quarantined
+          description: More than 5 quarantined injection attempts in 5 minutes. Review the security_events table for the source.

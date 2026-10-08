@@ -1,8 +1,24 @@
 import json
 import logging
 import re
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Any
+
+# Identifier of the HTTP request being handled, set by RequestIdMiddleware. Every log line
+# written while handling the request (including the uvicorn access line) carries it.
+request_id_var: ContextVar[str | None] = ContextVar("request_id", default=None)
+
+
+class RequestIdFilter(logging.Filter):
+    """Adds the current request id to log records so one request can be followed end to end."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        request_id = request_id_var.get()
+        if request_id is not None:
+            record.request_id = request_id
+        return True
+
 
 # Redaction patterns for secrets
 BEARER_PATTERN = re.compile(r"Bearer\s+[A-Za-z0-9_\-\.]+", re.IGNORECASE)
@@ -122,6 +138,7 @@ def setup_logging(*, level: str = "INFO", json_format: bool = True) -> None:
         root_logger.removeHandler(handler)
 
     stream_handler = logging.StreamHandler()
+    stream_handler.addFilter(RequestIdFilter())
     if json_format:
         stream_handler.setFormatter(StructuredJsonFormatter())
     else:

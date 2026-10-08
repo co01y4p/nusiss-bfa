@@ -8,6 +8,7 @@ from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.middleware.metrics import PrometheusMetricsMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware, build_rate_limiter
+from app.middleware.request_id import RequestIdMiddleware
 from app.monitoring.logging import setup_logging
 from app.monitoring.metrics import generate_metrics_exposition
 
@@ -38,8 +39,11 @@ app.add_middleware(
     allow_origins=settings.cors_origin_list,
     allow_credentials=False,
     allow_methods=["GET", "POST", "PATCH", "PUT"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+    expose_headers=["X-Request-ID", "Retry-After"],
 )
+# Added last so it is the outermost middleware: every other layer logs with the request id.
+app.add_middleware(RequestIdMiddleware)
 app.include_router(api_router)
 
 

@@ -58,6 +58,21 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm build
 
+  monitoring:
+    name: Prometheus alert rules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate the Prometheus config and alert rules, then run the rule unit tests
+        run: |
+          docker run --rm --entrypoint promtool \
+            -v "$PWD/infra/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
+            -v "$PWD/infra/monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro" \
+            prom/prometheus:v3.2.1 check config /etc/prometheus/prometheus.yml
+          docker run --rm --entrypoint promtool \
+            -v "$PWD/infra/monitoring/prometheus:/p:ro" \
+            prom/prometheus:v3.2.1 test rules /p/alerts_test.yml
+
   evaluations:
     runs-on: ubuntu-latest
     env:

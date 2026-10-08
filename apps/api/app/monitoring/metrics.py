@@ -5,6 +5,7 @@ from prometheus_client import (
     REGISTRY,
     CollectorRegistry,
     Counter,
+    Gauge,
     Histogram,
     generate_latest,
 )
@@ -34,6 +35,13 @@ HTTP_DURATION_BUCKETS: Sequence[float] = (
     2.5,
     5.0,
     10.0,
+    # Assistant requests run several sequential model calls and can take tens of seconds
+    # (workflow timeout: 120s). Without these buckets latency saturates at 10s and the
+    # latency alert could never fire.
+    20.0,
+    30.0,
+    60.0,
+    120.0,
 )
 
 # Agent metrics
@@ -88,6 +96,18 @@ HTTP_REQUESTS_TOTAL = Counter(
     "http_requests_total",
     "Total HTTP requests received by API",
     labelnames=["method", "path", "status_code"],
+)
+
+SECURITY_EVENTS_TOTAL = Counter(
+    "security_events_total",
+    "Security events raised by the workflow (prompt injection, policy violations)",
+    labelnames=["event_type", "severity"],
+)
+
+LLM_CIRCUIT_BREAKER_STATE = Gauge(
+    "llm_circuit_breaker_state",
+    "LLM circuit breaker state: 0 closed, 1 half-open, 2 open",
+    labelnames=["breaker"],
 )
 
 RATE_LIMIT_DECISIONS_TOTAL = Counter(
@@ -150,9 +170,57 @@ def record_http_request(
         HTTP_REQUEST_DURATION_SECONDS.labels(method=method, path=path).observe(duration_seconds)
 
 
+def record_security_event(event_type: str, severity: str) -> None:
+    SECURITY_EVENTS_TOTAL.labels(event_type=event_type, severity=severity).inc()
+
+
+def set_circuit_breaker_state(breaker: str, state_value: int) -> None:
+    LLM_CIRCUIT_BREAKER_STATE.labels(breaker=breaker).set(state_value)
+
+
 def record_rate_limit_decision(backend: str, result: str) -> None:
     RATE_LIMIT_DECISIONS_TOTAL.labels(backend=backend, result=result).inc()
 
 
 def generate_metrics_exposition(registry: CollectorRegistry = REGISTRY) -> tuple[bytes, str]:
     return generate_latest(registry), CONTENT_TYPE_LATEST
+
+
+# A labelled counter series does not exist until its first event, so Prometheus sees the first
+# burst already at its final value and increase() / rate() report 0: the first security event,
+# agent fallback or escalation would be invisible to the alerts. Creating the known series at
+# zero when the process starts avoids that. Keep these lists in sync with the code that
+# records the metrics (tests/test_observability.py cross-checks the agent names).
+AGENT_NAMES = (
+    "security",
+    "intent",
+    "extraction",
+    "classification",
+    "priority",
+    "assignment",
+    "response",
+    "review",
+)
+WORKFLOW_OUTCOMES = ("FINALIZED", "NEEDS_CLARIFICATION", "HUMAN_REVIEW", "QUARANTINED", "DECLINED")
+SECURITY_EVENT_KINDS = (
+    ("DIRECT_PROMPT_INJECTION", "HIGH"),
+    ("INDIRECT_RAG_INJECTION", "HIGH"),
+    ("OUTPUT_POLICY_VIOLATION", "HIGH"),
+    ("SECURITY_CHECK_UNAVAILABLE", "MEDIUM"),
+)
+
+
+def initialize_known_series() -> None:
+    for agent in AGENT_NAMES:
+        for status in ("success", "fallback"):
+            AGENT_RUNS_TOTAL.labels(agent=agent, status=status)
+    for outcome in WORKFLOW_OUTCOMES:
+        WORKFLOW_RUNS_TOTAL.labels(outcome=outcome)
+    for event_type, severity in SECURITY_EVENT_KINDS:
+        SECURITY_EVENTS_TOTAL.labels(event_type=event_type, severity=severity)
+    for backend in ("valkey", "memory"):
+        for result in ("allowed", "limited"):
+            RATE_LIMIT_DECISIONS_TOTAL.labels(backend=backend, result=result)
+
+
+initialize_known_series()
