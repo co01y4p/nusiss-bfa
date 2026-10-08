@@ -87,6 +87,7 @@ class OpenAICompatibleStructuredLLM:
         model: str,
         temperature: float = 0.0,
         timeout_seconds: float = 20.0,
+        reasoning_effort: str | None = None,
     ) -> OutputT:
         if not self.circuit_breaker.allow_request():
             raise CircuitBreakerOpenError(
@@ -103,6 +104,7 @@ class OpenAICompatibleStructuredLLM:
                     output_schema=output_schema,
                     model=model,
                     timeout_seconds=timeout_seconds,
+                    reasoning_effort=reasoning_effort,
                 )
             else:
                 result = await self._generate_chat_completion(
@@ -131,6 +133,7 @@ class OpenAICompatibleStructuredLLM:
         temperature: float = 0.0,
         timeout_seconds: float = 20.0,
         max_tool_calls: int = 1,
+        reasoning_effort: str | None = None,
     ) -> ToolCallingResult[OutputT]:
         if not tools:
             sanitized_payload = (
@@ -143,6 +146,7 @@ class OpenAICompatibleStructuredLLM:
                 model=model,
                 temperature=temperature,
                 timeout_seconds=timeout_seconds,
+                reasoning_effort=reasoning_effort,
             )
             return ToolCallingResult(
                 output=output,
@@ -167,6 +171,7 @@ class OpenAICompatibleStructuredLLM:
                     model=model,
                     timeout_seconds=timeout_seconds,
                     max_tool_calls=max_tool_calls,
+                    reasoning_effort=reasoning_effort,
                 )
             else:
                 result = await self._generate_chat_completion_with_tools(
@@ -194,6 +199,7 @@ class OpenAICompatibleStructuredLLM:
         output_schema: type[OutputT],
         model: str,
         timeout_seconds: float,
+        reasoning_effort: str | None = None,
     ) -> OutputT:
         request_body: dict[str, Any] = {
             "model": model,
@@ -209,7 +215,7 @@ class OpenAICompatibleStructuredLLM:
                     "schema": output_schema.model_json_schema(),
                 }
             },
-            "reasoning": {"effort": self.reasoning_effort},
+            "reasoning": {"effort": reasoning_effort or self.reasoning_effort},
             "max_output_tokens": self.max_output_tokens,
             "store": False,
         }
@@ -284,6 +290,7 @@ class OpenAICompatibleStructuredLLM:
         model: str,
         timeout_seconds: float,
         max_tool_calls: int,
+        reasoning_effort: str | None = None,
     ) -> ToolCallingResult[OutputT]:
         input_items: list[dict[str, Any]] = [
             {"role": "system", "content": system_prompt},
@@ -305,7 +312,7 @@ class OpenAICompatibleStructuredLLM:
             "tool_choice": "auto",
             "parallel_tool_calls": False,
             "text": self._responses_text_format(output_schema),
-            "reasoning": {"effort": self.reasoning_effort},
+            "reasoning": {"effort": reasoning_effort or self.reasoning_effort},
             "max_output_tokens": self.max_output_tokens,
             "store": False,
         }

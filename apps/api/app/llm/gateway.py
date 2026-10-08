@@ -51,6 +51,7 @@ class StructuredLLM(Protocol):
         model: str,
         temperature: float = 0.0,
         timeout_seconds: float = 20.0,
+        reasoning_effort: str | None = None,
     ) -> OutputT: ...
 
     async def generate_with_tools(
@@ -65,4 +66,5 @@ class StructuredLLM(Protocol):
         temperature: float = 0.0,
         timeout_seconds: float = 20.0,
         max_tool_calls: int = 1,
+        reasoning_effort: str | None = None,
     ) -> ToolCallingResult[OutputT]: ...

@@ -34,15 +34,22 @@ class BaseAgent(ABC, Generic[AgentOutputT]):  # noqa: UP046
         model: str,
         timeout_seconds: float,
         system_prompt: str | None = None,
+        reasoning_effort: str | None = None,
     ) -> None:
         self.llm = llm
         self.model = model
         self.timeout_seconds = timeout_seconds
+        # None means "use the provider's default effort".
+        self.reasoning_effort = reasoning_effort
         self.system_prompt = (
             system_prompt.strip()
             if system_prompt and system_prompt.strip()
             else load_prompt(self.name)
         )
+
+    def _effort_kwargs(self) -> dict[str, str]:
+        """Pass the effort only when set, so LLM doubles without the parameter keep working."""
+        return {"reasoning_effort": self.reasoning_effort} if self.reasoning_effort else {}
 
     async def run(self, payload: dict[str, Any]) -> AgentOutputT:
         start_time = time.perf_counter()
@@ -55,6 +62,7 @@ class BaseAgent(ABC, Generic[AgentOutputT]):  # noqa: UP046
                     model=self.model,
                     temperature=0.0,
                     timeout_seconds=self.timeout_seconds,
+                    **self._effort_kwargs(),
                 )
             duration = time.perf_counter() - start_time
             record_agent_run(self.name, status="success", duration_seconds=duration)

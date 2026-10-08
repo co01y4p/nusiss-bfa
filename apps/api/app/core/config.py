@@ -2,7 +2,36 @@ from functools import lru_cache
 from ipaddress import IPv4Network, IPv6Network, ip_network
 from typing import Literal
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+AGENT_NAMES = (
+    "security",
+    "intent",
+    "extraction",
+    "classification",
+    "priority",
+    "assignment",
+    "response",
+    "review",
+)
+REASONING_EFFORTS = ("none", "minimal", "low", "medium", "high")
+
+
+def parse_reasoning_effort_overrides(value: str) -> dict[str, str]:
+    overrides: dict[str, str] = {}
+    for item in value.split(","):
+        if not item.strip():
+            continue
+        agent, separator, effort = (part.strip().lower() for part in item.partition("="))
+        if not separator or agent not in AGENT_NAMES or effort not in REASONING_EFFORTS:
+            raise ValueError(
+                f"Invalid LLM_REASONING_EFFORT_OVERRIDES entry {item.strip()!r}: use "
+                f"agent=effort with agent in {', '.join(AGENT_NAMES)} and effort in "
+                f"{', '.join(REASONING_EFFORTS)}"
+            )
+        overrides[agent] = effort
+    return overrides
 
 
 class Settings(BaseSettings):
@@ -28,6 +57,9 @@ class Settings(BaseSettings):
     generator_model: str = "gpt-5-nano"
     llm_reasoning_effort: str = "minimal"
     llm_max_output_tokens: int = 1024
+    # Per-agent overrides of LLM_REASONING_EFFORT, as "agent=effort,agent=effort",
+    # e.g. "security=low,intent=low,priority=low". Agents not listed use the default.
+    llm_reasoning_effort_overrides: str = ""
     # Per-HTTP-attempt timeout. Kept well below agent_timeout_seconds so a stalled
     # provider request is retried inside the agent budget instead of consuming it.
     llm_attempt_timeout_seconds: float = 12.0
@@ -63,6 +95,16 @@ class Settings(BaseSettings):
     langfuse_host: str = "https://cloud.langfuse.com"
     langfuse_sample_rate: float = 1.0
     langfuse_debug: bool = False
+
+    @field_validator("llm_reasoning_effort_overrides")
+    @classmethod
+    def _validate_effort_overrides(cls, value: str) -> str:
+        parse_reasoning_effort_overrides(value)
+        return value
+
+    def reasoning_effort_for(self, agent_name: str) -> str | None:
+        """Effort override for one agent, or None to use the provider default."""
+        return parse_reasoning_effort_overrides(self.llm_reasoning_effort_overrides).get(agent_name)
 
     @property
     def trusted_proxy_networks(self) -> list[IPv4Network | IPv6Network]:

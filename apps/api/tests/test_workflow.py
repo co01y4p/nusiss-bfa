@@ -901,3 +901,59 @@ async def test_clarification_does_not_lead_with_a_refusal() -> None:
 
     assert state.outcome == "NEEDS_CLARIFICATION"
     assert state.final_response == "Which room or floor?"
+
+
+def test_reasoning_effort_overrides_parse_per_agent() -> None:
+    settings = Settings(llm_reasoning_effort_overrides="security=low, Intent=LOW,priority=medium")
+
+    assert settings.reasoning_effort_for("security") == "low"
+    assert settings.reasoning_effort_for("intent") == "low"
+    assert settings.reasoning_effort_for("priority") == "medium"
+    assert settings.reasoning_effort_for("review") is None
+    assert Settings().reasoning_effort_for("security") is None
+
+
+@pytest.mark.parametrize(
+    "bad",
+    ["security", "security=", "securty=low", "security=turbo", "security=low;intent=low"],
+)
+def test_invalid_reasoning_effort_overrides_fail_at_startup(bad: str) -> None:
+    with pytest.raises(ValueError, match="LLM_REASONING_EFFORT_OVERRIDES"):
+        Settings(llm_reasoning_effort_overrides=bad)
+
+
+@pytest.mark.asyncio
+async def test_agents_pass_their_effort_to_the_llm_only_when_set() -> None:
+    llm = FakeStructuredLLM()
+    with_effort = SecurityAgent(llm, model="fake", timeout_seconds=1, reasoning_effort="low")
+    without_effort = ReviewAgent(llm, model="fake", timeout_seconds=1)
+
+    await with_effort.run({"text": "The lift button is broken."})
+    await without_effort.run(
+        {
+            "response_type": "FACILITY_ANSWER",
+            "message": "ok",
+            "citations": [],
+            "reference_code": None,
+        }
+    )
+
+    efforts = {call["schema"]: call["reasoning_effort"] for call in llm.calls}
+    assert efforts["SecurityOutput"] == "low"
+    assert efforts["ReviewOutput"] is None
+
+
+@pytest.mark.asyncio
+async def test_intent_agent_uses_its_effort_on_both_model_turns() -> None:
+    llm = FakeStructuredLLM()
+    agent = IntentAgent(llm, model="fake", timeout_seconds=5, reasoning_effort="low")
+    workflow, _, _ = make_workflow(llm)
+    workflow.intent = agent
+    agent.tools = workflow.tools
+
+    state = await workflow.run(text="The lift button is broken.", location="Level 2")
+
+    intent_calls = [c for c in llm.calls if c["schema"] == "IntentOutput"]
+    assert state.outcome == "FINALIZED"
+    assert len(intent_calls) >= 2  # classification turn + tool-calling turn
+    assert {c["reasoning_effort"] for c in intent_calls} == {"low"}

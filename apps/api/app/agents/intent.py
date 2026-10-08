@@ -53,9 +53,14 @@ class IntentAgent(BaseAgent[IntentOutput]):
         timeout_seconds: float,
         tools: ToolRegistry | None = None,
         system_prompt: str | None = None,
+        reasoning_effort: str | None = None,
     ) -> None:
         super().__init__(
-            llm, model=model, timeout_seconds=timeout_seconds, system_prompt=system_prompt
+            llm,
+            model=model,
+            timeout_seconds=timeout_seconds,
+            system_prompt=system_prompt,
+            reasoning_effort=reasoning_effort,
         )
         self.tools = tools
         self.model_calls = 1
@@ -86,6 +91,7 @@ class IntentAgent(BaseAgent[IntentOutput]):
                 model=self.model,
                 temperature=0.0,
                 timeout_seconds=self.timeout_seconds,
+                **self._effort_kwargs(),
             )
 
         async def log_incident(user_payload: dict[str, Any]) -> ToolCallingResult[IntentOutput]:
@@ -105,6 +111,7 @@ class IntentAgent(BaseAgent[IntentOutput]):
                 temperature=0.0,
                 timeout_seconds=self.timeout_seconds,
                 max_tool_calls=1,
+                **self._effort_kwargs(),
             )
 
         start_time = asyncio.get_event_loop().time()

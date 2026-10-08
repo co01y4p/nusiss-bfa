@@ -116,7 +116,10 @@ async def evaluate_case_once(
         # does (heuristics + model + life-safety guard). This measures false positives
         # on benign and emergency messages, not only recall on obvious attacks.
         security = await SecurityAgent(
-            llm, model=settings.classifier_model, timeout_seconds=settings.agent_timeout_seconds
+            llm,
+            model=settings.classifier_model,
+            timeout_seconds=settings.agent_timeout_seconds,
+            reasoning_effort=settings.reasoning_effort_for("security"),
         ).run(
             {
                 "text": body.message,
@@ -162,6 +165,7 @@ async def evaluate_case_once(
             model=classifier_model,
             timeout_seconds=timeout,
             tools=None,
+            reasoning_effort=settings.reasoning_effort_for("intent"),
         ).run(
             {
                 "text": body.message,
@@ -186,14 +190,25 @@ async def evaluate_case_once(
     if body.suite in {"incidents", "safety_critical", "bias_fairness", "false_alarm"}:
         payload = {"text": body.message, "location": body.location}
         extraction = await ExtractionAgent(
-            llm, model=classifier_model, timeout_seconds=timeout
+            llm,
+            model=classifier_model,
+            timeout_seconds=timeout,
+            reasoning_effort=settings.reasoning_effort_for("extraction"),
         ).run(payload)
         require_model_output(extraction.reason_codes)
         classification = await ClassificationAgent(
-            llm, model=classifier_model, timeout_seconds=timeout
+            llm,
+            model=classifier_model,
+            timeout_seconds=timeout,
+            reasoning_effort=settings.reasoning_effort_for("classification"),
         ).run(payload)
         require_model_output(classification.reason_codes)
-        priority = await PriorityAgent(llm, model=classifier_model, timeout_seconds=timeout).decide(
+        priority = await PriorityAgent(
+            llm,
+            model=classifier_model,
+            timeout_seconds=timeout,
+            reasoning_effort=settings.reasoning_effort_for("priority"),
+        ).decide(
             {
                 "text": body.message,
                 "summary": extraction.summary,
@@ -238,9 +253,12 @@ async def evaluate_case_once(
         content=body.context,
         score=1.0,
     )
-    response = await ResponseAgent(llm, model=generator_model, timeout_seconds=timeout).run(
-        {"text": body.message, "retrieval_chunks": [chunk.model_dump(mode="json")]}
-    )
+    response = await ResponseAgent(
+        llm,
+        model=generator_model,
+        timeout_seconds=timeout,
+        reasoning_effort=settings.reasoning_effort_for("response"),
+    ).run({"text": body.message, "retrieval_chunks": [chunk.model_dump(mode="json")]})
     require_model_output(response.reason_codes)
     citation_result = CitationValidator().validate(
         response_text=response.message,

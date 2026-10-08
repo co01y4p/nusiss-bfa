@@ -292,3 +292,66 @@ async def test_stalled_attempt_times_out_early_and_is_retried() -> None:
     assert result == ExampleOutput(label="OK", confidence=1)
     # Each attempt is capped below the agent budget, so the stall is retried.
     assert timeouts == [5, 5]
+
+
+def _responses_provider(
+    captured: list[dict[str, Any]], **kwargs: Any
+) -> OpenAICompatibleStructuredLLM:
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [
+                            {"type": "output_text", "text": '{"label":"OK","confidence":1}'}
+                        ],
+                    }
+                ]
+            },
+        )
+
+    return OpenAICompatibleStructuredLLM(
+        base_url="https://api.openai.com/v1",
+        api_key="test-key",
+        api_style="responses",
+        transport=httpx.MockTransport(handler),
+        **kwargs,
+    )
+
+
+@pytest.mark.asyncio
+async def test_per_call_reasoning_effort_overrides_the_provider_default() -> None:
+    bodies: list[dict[str, Any]] = []
+    provider = _responses_provider(bodies, reasoning_effort="minimal")
+    common: dict[str, Any] = {
+        "system_prompt": "Classify.",
+        "user_payload": {"text": "x"},
+        "output_schema": ExampleOutput,
+        "model": "gpt-5-nano",
+    }
+
+    await provider.generate(**common)
+    await provider.generate(**common, reasoning_effort="low")
+
+    assert [body["reasoning"] for body in bodies] == [{"effort": "minimal"}, {"effort": "low"}]
+
+
+@pytest.mark.asyncio
+async def test_reasoning_effort_reaches_the_tool_calling_request_without_tools() -> None:
+    bodies: list[dict[str, Any]] = []
+    provider = _responses_provider(bodies, reasoning_effort="minimal")
+
+    await provider.generate_with_tools(
+        system_prompt="Classify.",
+        user_payload={"text": "x"},
+        output_schema=ExampleOutput,
+        tools=[],
+        tool_executor=lambda name, arguments: {},  # type: ignore[arg-type,return-value]
+        model="gpt-5-nano",
+        reasoning_effort="low",
+    )
+
+    assert bodies[0]["reasoning"] == {"effort": "low"}

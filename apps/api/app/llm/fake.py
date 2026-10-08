@@ -30,10 +30,18 @@ class FakeStructuredLLM:
         model: str,
         temperature: float = 0.0,
         timeout_seconds: float = 20.0,
+        reasoning_effort: str | None = None,
     ) -> OutputT:
         del system_prompt, temperature, timeout_seconds
         schema_name = output_schema.__name__
-        self.calls.append({"schema": schema_name, "model": model, "payload": user_payload})
+        self.calls.append(
+            {
+                "schema": schema_name,
+                "model": model,
+                "payload": user_payload,
+                "reasoning_effort": reasoning_effort,
+            }
+        )
         handler = self.handlers.get(schema_name)
         if callable(handler):
             data = handler(user_payload)
@@ -68,6 +76,7 @@ class FakeStructuredLLM:
         temperature: float = 0.0,
         timeout_seconds: float = 20.0,
         max_tool_calls: int = 1,
+        reasoning_effort: str | None = None,
     ) -> ToolCallingResult[OutputT]:
         del system_prompt, temperature, timeout_seconds, max_tool_calls
         schema_name = output_schema.__name__
@@ -77,6 +86,7 @@ class FakeStructuredLLM:
                 "model": model,
                 "payload": user_payload,
                 "tools": [tool.name for tool in tools],
+                "reasoning_effort": reasoning_effort,
             }
         )
         handler = self.handlers.get(schema_name)

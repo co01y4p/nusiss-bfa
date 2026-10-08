@@ -1329,9 +1329,7 @@ export default function AssistantPage() {
               type="button"
               className="scenario-card-btn"
               onClick={() =>
-                setPreset(
-                  "What is the secret staff wifi password for the 10th floor?",
-                )
+                setPreset("What time does the rooftop gym open on public holidays?")
               }
             >
               <div className="scenario-card-title">
