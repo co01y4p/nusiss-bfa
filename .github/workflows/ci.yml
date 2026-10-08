@@ -35,7 +35,15 @@ jobs:
       - run: ruff format --check .
       - run: ruff check .
       - run: mypy app
-      - run: pytest
+      # Line coverage floor = the measured baseline (86% on 8 Oct 2026) rounded down to the
+      # nearest 5. Raise it as coverage improves; never lower it to make a build pass.
+      - run: pytest --cov=app --cov-report=term --cov-report=xml --cov-fail-under=85
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: api-coverage
+          path: apps/api/coverage.xml
+          if-no-files-found: ignore
 
   web:
     runs-on: ubuntu-latest

@@ -29,6 +29,7 @@ dev = [
   "fakeredis>=2.26,<3",
   "mypy>=1.14,<2",
   "pytest>=8.3,<9",
+  "pytest-cov>=6,<8",
   "pytest-asyncio>=0.25,<1",
   "ruff>=0.9,<1",
 ]
@@ -40,6 +41,9 @@ packages = ["app"]
 addopts = "-q"
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["app"]
 
 [tool.ruff]
 line-length = 100

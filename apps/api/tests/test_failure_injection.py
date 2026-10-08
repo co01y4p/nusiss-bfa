@@ -5,6 +5,7 @@ asserts what the occupant and the manager see. The table in docs/plan/gap-closur
 the same scenarios.
 """
 
+import asyncio
 from collections.abc import Generator
 from typing import Any
 
@@ -13,8 +14,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.llm.circuit_breaker import CircuitBreaker
+from app.llm.fake import FakeStructuredLLM
 from app.llm.providers import openai_compatible
 from app.llm.providers.openai_compatible import OpenAICompatibleStructuredLLM
+from app.monitoring.langfuse import LangfuseTracer
 from app.rag.retriever import KnowledgeRetriever
 from tests.test_api import client  # noqa: F401  (pytest fixture)
 from tests.test_workflow import make_workflow
@@ -241,3 +244,136 @@ async def test_a_rejected_routine_reply_keeps_the_plain_manager_message() -> Non
 
     assert state.outcome == "HUMAN_REVIEW"
     assert state.final_response == "A facility manager will review this request."
+
+
+@pytest.mark.asyncio
+async def test_open_circuit_breaker_fails_fast_without_calling_the_provider() -> None:
+    calls: list[httpx.Request] = []
+
+    def counting(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return unavailable(request)
+
+    breaker = CircuitBreaker(failure_threshold=1, recovery_timeout_seconds=3600, name="open-test")
+    breaker.record_failure()  # opens the breaker
+    workflow, incidents, _ = make_workflow(provider(counting, breaker=breaker))
+
+    routine = await workflow.run(text=ROUTINE, location="Room 105")
+    hazard = await workflow.run(text=HAZARD, location="Level 2 pantry")
+
+    assert calls == []  # no HTTP request was made
+    assert routine.outcome == "HUMAN_REVIEW"
+    assert routine.incident_id is None
+    assert hazard.incident_id is not None  # a hazard is still logged with no model at all
+    stored = incidents.get_by_id(hazard.incident_id)
+    assert stored is not None
+    assert stored.priority == "P1"
+
+
+def schema_breaking(text: str) -> Any:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "output": [{"type": "message", "content": [{"type": "output_text", "text": text}]}]
+            },
+        )
+
+    return handler
+
+
+@pytest.mark.parametrize(
+    "model_output",
+    [
+        "this is not json",
+        '{"risk_score": 0.1, "risk_labels": [], "reason_codes": [], "unexpected_field": true}',
+        '{"risk_score": 7, "risk_labels": [], "reason_codes": []}',
+        '{"risk_score": 0.1}',
+    ],
+    ids=["not-json", "extra-field", "out-of-range", "missing-fields"],
+)
+@pytest.mark.asyncio
+async def test_model_output_that_breaks_the_schema_is_rejected_and_counted(
+    model_output: str,
+) -> None:
+    labels = {"agent": "security"}
+    before = sample("llm_schema_validation_failures_total", labels)
+    workflow, _, _ = make_workflow(provider(schema_breaking(model_output)))
+
+    state = await workflow.run(text=ROUTINE, location="Room 105")
+
+    assert state.outcome == "HUMAN_REVIEW"  # fail closed: invalid output is never trusted
+    assert state.incident_id is None
+    assert sample("llm_schema_validation_failures_total", labels) == before + 1
+
+
+class SlowLLM(FakeStructuredLLM):
+    async def generate(self, **kwargs: Any) -> Any:
+        await asyncio.sleep(0.25)
+        return await super().generate(**kwargs)
+
+    async def generate_with_tools(self, **kwargs: Any) -> Any:
+        await asyncio.sleep(0.25)
+        return await super().generate_with_tools(**kwargs)
+
+
+@pytest.mark.asyncio
+async def test_workflow_timeout_ends_in_manual_review_and_is_still_recorded() -> None:
+    workflow, _, runs = make_workflow(SlowLLM())
+    workflow.settings.workflow_timeout_seconds = 0.4  # shorter than three model calls
+
+    state = await workflow.run(text=ROUTINE, location="Room 105")
+
+    assert state.outcome == "HUMAN_REVIEW"
+    assert (
+        state.final_response == "The automated workflow stopped safely. A manager will review it."
+    )
+    assert "WORKFLOW_BOUND_REACHED" in [c for s in state.trace for c in s.reason_codes]
+    assert len(runs.runs) == 1
+
+
+@pytest.mark.asyncio
+async def test_unreachable_langfuse_does_not_affect_the_workflow() -> None:
+    workflow, _, _ = make_workflow()
+    workflow.tracer = LangfuseTracer(
+        enabled=True,
+        public_key="pk-test",
+        secret_key="sk-test",
+        host="http://127.0.0.1:1",  # nothing listens here
+    )
+
+    state = await workflow.run(text="The lift button is broken.", location="Level 2")
+
+    assert state.outcome == "FINALIZED"
+    assert state.reference_code is not None
+
+
+def test_report_form_and_hazard_logging_survive_an_llm_outage(
+    client: TestClient,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Save-before-AI: the non-AI path is independent of the model, and the assistant degrades."""
+    from app.api.v1.routers import assistant as assistant_router
+
+    monkeypatch.setattr(assistant_router, "build_llm", lambda settings: provider(unavailable))
+
+    created = client.post(
+        "/api/v1/incidents", json={"description": "Broken lobby light", "location": "Main lobby"}
+    )
+    assert created.status_code == 201
+    tracked = client.get(f"/api/v1/incidents/track/{created.json()['reference_code']}")
+    assert tracked.status_code == 200
+
+    routine = client.post("/api/v1/assistant/messages", json={"message": ROUTINE})
+    assert routine.status_code == 200
+    assert routine.json()["outcome"] == "HUMAN_REVIEW"
+
+    hazard = client.post(
+        "/api/v1/assistant/messages", json={"message": HAZARD, "location": "Level 2 pantry"}
+    )
+    assert hazard.status_code == 200
+    body = hazard.json()
+    assert body["outcome"] == "HUMAN_REVIEW"
+    assert body["reference_code"]
+    assert "+65 6789 0001" in body["message"]
+    assert client.get(f"/api/v1/incidents/track/{body['reference_code']}").status_code == 200
