@@ -141,3 +141,103 @@ async def test_a_real_injection_is_still_quarantined_when_the_llm_is_down() -> N
     )
 
     assert state.outcome == "QUARANTINED"  # the keyword rules need no model
+
+
+def invalid_json(request: httpx.Request) -> httpx.Response:
+    return httpx.Response(
+        200,
+        json={
+            "output": [
+                {
+                    "type": "message",
+                    "content": [{"type": "output_text", "text": "this is not json"}],
+                }
+            ]
+        },
+    )
+
+
+@pytest.mark.parametrize("handler", [unavailable, invalid_json], ids=["http-503", "invalid-json"])
+@pytest.mark.asyncio
+async def test_hazard_report_is_logged_as_p1_even_when_the_model_is_unusable(handler: Any) -> None:
+    workflow, incidents, runs = make_workflow(provider(handler))
+
+    state = await workflow.run(text=HAZARD, location="Level 2 pantry")
+
+    # The incident exists, is P1 from the keyword rules alone, and a manager must review it.
+    assert state.incident_id is not None
+    stored = incidents.get_by_id(state.incident_id)
+    assert stored is not None
+    assert stored.priority == "P1"
+    assert stored.requires_human_review is True
+    create_step = next(s for s in state.trace if s.node == "create_incident")
+    assert create_step.reason_codes == ["HAZARD_LOGGED_WITHOUT_MODEL"]
+    # The occupant gets the reference code and emergency instructions without any model text.
+    assert state.outcome == "HUMAN_REVIEW"
+    assert state.reference_code in state.final_response
+    assert "+65 6789 0001" in state.final_response
+    assert len(runs.runs) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_non_hazard_message_is_not_logged_when_the_model_is_unusable() -> None:
+    workflow, incidents, _ = make_workflow(provider(unavailable))
+
+    state = await workflow.run(text=ROUTINE, location="Room 105")
+
+    assert state.incident_id is None
+    assert incidents.items == {}
+
+
+@pytest.mark.asyncio
+async def test_database_failure_while_logging_a_hazard_ends_in_manual_review() -> None:
+    workflow, incidents, _ = make_workflow(provider(unavailable))
+
+    def database_down(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("database unavailable")
+
+    incidents.create = database_down  # type: ignore[method-assign]
+
+    state = await workflow.run(text=HAZARD, location="Level 2 pantry")
+
+    assert state.outcome == "HUMAN_REVIEW"
+    assert state.incident_id is None
+    codes = [code for step in state.trace for code in step.reason_codes]
+    assert "CREATE_INCIDENT_FAILED" in codes
+
+
+@pytest.mark.asyncio
+async def test_p1_acknowledgement_that_review_rejects_still_carries_emergency_instructions() -> (
+    None
+):
+    workflow, _, _ = make_workflow()
+
+    async def reject(*args: object, **kwargs: object) -> Any:
+        from app.agents.review import ReviewOutput
+
+        return ReviewOutput(approved=False, issues=["unsupported claim"], reason_codes=["X"])
+
+    workflow.review.run = reject  # type: ignore[method-assign]
+
+    state = await workflow.run(text=HAZARD, location="Level 2 pantry")
+
+    assert state.outcome == "HUMAN_REVIEW"
+    assert state.reference_code in state.final_response
+    assert "+65 6789 0001" in state.final_response
+
+
+@pytest.mark.asyncio
+async def test_a_rejected_routine_reply_keeps_the_plain_manager_message() -> None:
+    workflow, _, _ = make_workflow()
+
+    async def reject(*args: object, **kwargs: object) -> Any:
+        from app.agents.review import ReviewOutput
+
+        return ReviewOutput(approved=False, issues=["unsupported claim"], reason_codes=["X"])
+
+    workflow.review.run = reject  # type: ignore[method-assign]
+
+    state = await workflow.run(text="The lift button is broken.", location="Level 2")
+
+    assert state.outcome == "HUMAN_REVIEW"
+    assert state.final_response == "A facility manager will review this request."

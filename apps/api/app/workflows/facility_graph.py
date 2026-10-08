@@ -374,6 +374,48 @@ class FacilityWorkflow:
             "auto_confirm_seconds": CONFIRM_TIMEOUT_SECONDS,
         }
 
+    async def _log_incident_without_model(
+        self, state: WorkflowState, payload: dict[str, Any], reason_code: str
+    ) -> None:
+        """Create the incident through the typed tool, then triage it as usual.
+
+        Used when whether to log is already decided (the occupant confirmed, or a critical
+        hazard was reported and the model could not route it). Each triage agent has a
+        deterministic fallback, and critical hazards are forced to P1 by the keyword rules,
+        so the incident is still recorded, prioritised and visible to a manager.
+        """
+        if self.tools is None or not self.tools.is_registered("create_incident"):
+            state.outcome = "HUMAN_REVIEW"
+            state.final_response = "A facility manager will review this request."
+            self._record(state, "human_review", {"reason": reason_code}, ["TOOL_UNAVAILABLE"])
+            return
+        created = await self.tools.execute(
+            "create_incident",
+            {
+                "description": state.effective_text,
+                "location": state.supplied_location or "Unspecified",
+            },
+            caller_role="SYSTEM",
+        )
+        data = created.data if created.success else None
+        if not isinstance(data, dict):
+            state.outcome = "HUMAN_REVIEW"
+            state.final_response = "A facility manager will review this request."
+            self._record(state, "human_review", {"reason": reason_code}, ["CREATE_INCIDENT_FAILED"])
+            return
+        self._record(
+            state,
+            "create_incident",
+            {"success": True, "reference_code": data["reference_code"]},
+            [reason_code],
+        )
+        await self._incident_path(
+            state,
+            payload,
+            incident_id=data["id"],
+            reference_code=data["reference_code"],
+        )
+
     async def _execute(self, state: WorkflowState) -> None:
         # Deterministic hazard detection runs before any model call so the intent agent
         # can be forced to log immediately instead of asking a clarifying question.
@@ -446,37 +488,7 @@ class FacilityWorkflow:
         if state.confirm_action == "CREATE_INCIDENT":
             # The occupant confirmed (or let the countdown run out). Whether to log is
             # settled, so the tool is invoked directly rather than re-asking the model.
-            if self.tools is None or not self.tools.is_registered("create_incident"):
-                state.outcome = "HUMAN_REVIEW"
-                state.final_response = "A facility manager will review this request."
-                self._record(state, "human_review", {"confirmed": True}, ["TOOL_UNAVAILABLE"])
-                return
-            created = await self.tools.execute(
-                "create_incident",
-                {
-                    "description": state.effective_text,
-                    "location": state.supplied_location or "Unspecified",
-                },
-                caller_role="SYSTEM",
-            )
-            data = created.data if created.success else None
-            if not isinstance(data, dict):
-                state.outcome = "HUMAN_REVIEW"
-                state.final_response = "A facility manager will review this request."
-                self._record(state, "human_review", {"confirmed": True}, ["CREATE_INCIDENT_FAILED"])
-                return
-            self._record(
-                state,
-                "create_incident",
-                {"success": True, "reference_code": data["reference_code"]},
-                ["OCCUPANT_CONFIRMED"],
-            )
-            await self._incident_path(
-                state,
-                payload,
-                incident_id=data["id"],
-                reference_code=data["reference_code"],
-            )
+            await self._log_incident_without_model(state, payload, "OCCUPANT_CONFIRMED")
             return
 
         self._check_bounds(state, model_call=True)
@@ -554,6 +566,19 @@ class FacilityWorkflow:
             )
         for _ in range(max(0, self.intent.model_calls - 1)):
             self._check_bounds(state, model_call=True)
+
+        if (
+            hazards
+            and not (intent.incident_id and intent.reference_code)
+            and "MANUAL_TRIAGE" in intent.reason_codes
+        ):
+            # The model could not route a message the keyword check flagged as a critical
+            # hazard (provider outage, timeout, invalid output). Never drop it: log it now.
+            # The rules cannot tell a report from a question here, so safety wins; a manager
+            # reviews every P1 anyway.
+            _cancel_extraction()
+            await self._log_incident_without_model(state, payload, "HAZARD_LOGGED_WITHOUT_MODEL")
+            return
 
         if intent.intent == Intent.INCIDENT_REPORT:
             if intent.incident_id and intent.reference_code:
@@ -1078,6 +1103,13 @@ class FacilityWorkflow:
             )
             state.outcome = "HUMAN_REVIEW"
             state.final_response = "A facility manager will review this request."
+            if priority == "P1" and state.reference_code:
+                # An emergency must never be left without instructions because the generated
+                # reply was not approved: use fixed text that needs no model.
+                state.final_response = (
+                    f"Your report {state.reference_code} has been logged as an emergency and "
+                    f"a facility manager will review it. {P1_SAFETY_LINE}"
+                )
             self._record(
                 state,
                 "human_review",
