@@ -21,6 +21,10 @@ WORKDIR /app
 COPY --from=builder --chown=node:node /app/public ./public
 COPY --from=builder --chown=node:node /app/.next/standalone ./
 COPY --from=builder --chown=node:node /app/.next/static ./.next/static
+# The runtime only executes `node server.js`. Remove the package managers bundled with the
+# base image (their own dependencies are what vulnerability scanners flag).
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
+    /opt/yarn-* /usr/local/bin/yarn /usr/local/bin/yarnpkg
 # Next.js writes its runtime cache here; create it owned by the unprivileged user.
 RUN mkdir -p .next/cache && chown node:node .next/cache
 USER node

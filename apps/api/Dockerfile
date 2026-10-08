@@ -10,6 +10,10 @@ COPY alembic.ini ./
 COPY migrations ./migrations
 RUN pip install --no-cache-dir .
 
+# The app never calls pip at runtime. Removing the installer also removes the copies of
+# msgpack/urllib3 vendored inside pip that vulnerability scanners flag in the image.
+RUN pip uninstall -y pip setuptools wheel
+
 # Run as an unprivileged user. The API writes nothing to disk, so no chown is needed.
 RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin app
 USER 10001

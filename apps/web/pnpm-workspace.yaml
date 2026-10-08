@@ -3,3 +3,21 @@ allowBuilds:
 onlyBuiltDependencies:
   - sharp
   - unrs-resolver
+
+# Security overrides for transitive dependencies of the lint/build toolchain. Each pins a
+# range that has a published fix to the patched release of the same major line. Remove an
+# entry once the dependency that pulls it in has moved past it.
+overrides:
+  "js-yaml@>=4.0.0 <4.3.2": ">=4.3.2 <5"
+  "brace-expansion@<1.1.21": ">=1.1.21 <2"
+  "brace-expansion@>=4.0.0 <5.0.12": ">=5.0.12 <6"
+  "source-map-js@>=1.0.0 <1.2.2": ">=1.2.2 <2"
+
+auditConfig:
+  ignoreGhsas:
+    # braces <=3.0.3 stack-exhaustion DoS on deeply nested patterns. The advisory names
+    # 3.0.4 as the fix but that release is not published (latest is 3.0.3), so it cannot
+    # be installed. braces is reached only through eslint-config-next > fast-glob >
+    # micromatch at lint time; it is not in the production image. Reviewed 2026-10-08;
+    # remove this entry as soon as a fixed release exists.
+    - GHSA-vfj7-8cjw-p6xm
