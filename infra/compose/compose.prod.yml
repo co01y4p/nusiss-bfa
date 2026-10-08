@@ -61,6 +61,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET (32+ characters) in .env}
       DATABASE_URL: postgresql+psycopg://bfa:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/bfa
       CORS_ORIGINS: https://${SITE_DOMAIN:-localhost}
+      # Caddy reaches the API over the private Compose network; only it may set X-Forwarded-For.
+      TRUSTED_PROXY_IPS: 172.16.0.0/12,10.0.0.0/8,192.168.0.0/16
     read_only: true
     tmpfs:
       - /tmp

@@ -1,4 +1,6 @@
 from functools import lru_cache
+from ipaddress import IPv4Network, IPv6Network, ip_network
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -42,6 +44,10 @@ class Settings(BaseSettings):
     workflow_timeout_seconds: float = 120.0
 
     rate_limit_enabled: bool = True
+    # "valkey" shares limits across API processes and falls back to memory if Valkey is down.
+    rate_limit_backend: Literal["valkey", "memory"] = "valkey"
+    # Comma-separated IPs/CIDRs of reverse proxies allowed to set X-Forwarded-For.
+    trusted_proxy_ips: str = ""
     rate_limit_requests_per_minute: int = 60
     rate_limit_window_seconds: int = 60
     circuit_breaker_failure_threshold: int = 3
@@ -57,6 +63,14 @@ class Settings(BaseSettings):
     langfuse_host: str = "https://cloud.langfuse.com"
     langfuse_sample_rate: float = 1.0
     langfuse_debug: bool = False
+
+    @property
+    def trusted_proxy_networks(self) -> list[IPv4Network | IPv6Network]:
+        return [
+            ip_network(item.strip(), strict=False)
+            for item in self.trusted_proxy_ips.split(",")
+            if item.strip()
+        ]
 
     @property
     def cors_origin_list(self) -> list[str]:

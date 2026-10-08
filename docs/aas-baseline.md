@@ -122,7 +122,7 @@ We implement **continuous observability and drift detection via Langfuse and Pro
 | **Malformed LLM Output** | Schema mismatch crashes the graph | **Pydantic Validation & Retry:** [`apps/api/app/agents/base.py`](../apps/api/app/agents/base.py) enforces strict schema parsing with bounded retries, falling back to the `review` node for human triage. |
 | **API Denial of Service / Abuse** | Token exhaustion, server starvation | **Valkey Sliding-Window Rate Limiter** ([`apps/api/app/middleware/rate_limit.py`](../apps/api/app/middleware/rate_limit.py)) restricts public endpoints per IP/token. |
 | **Database Connection Exhaustion** | Connection leaks under concurrent reports | **SQLAlchemy Connection Pooling** with strict pool sizes, timeout boundaries, and automated health checks. |
-| **Stateless Scaling** | Backend bottleneck under high occupant volume | **Stateless API Design:** All agent state is request-scoped or persisted in Postgres/Valkey. The FastAPI service can scale horizontally behind a reverse proxy (Caddy / Nginx). |
+| **Stateless Scaling** | Backend bottleneck under high occupant volume | **Stateless API Design:** All agent state is request-scoped or persisted in Postgres; rate-limit counters are shared through Valkey. The FastAPI service can scale horizontally behind a reverse proxy (Caddy / Nginx). |
 
 ---
 

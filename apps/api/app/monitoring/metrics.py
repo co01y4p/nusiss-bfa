@@ -90,6 +90,12 @@ HTTP_REQUESTS_TOTAL = Counter(
     labelnames=["method", "path", "status_code"],
 )
 
+RATE_LIMIT_DECISIONS_TOTAL = Counter(
+    "rate_limit_decisions_total",
+    "Rate limiter decisions by the backend that served them (valkey or memory)",
+    labelnames=["backend", "result"],
+)
+
 HTTP_REQUEST_DURATION_SECONDS = Histogram(
     "http_request_duration_seconds",
     "HTTP request processing duration in seconds",
@@ -142,6 +148,10 @@ def record_http_request(
     HTTP_REQUESTS_TOTAL.labels(method=method, path=path, status_code=str(status_code)).inc()
     if duration_seconds >= 0:
         HTTP_REQUEST_DURATION_SECONDS.labels(method=method, path=path).observe(duration_seconds)
+
+
+def record_rate_limit_decision(backend: str, result: str) -> None:
+    RATE_LIMIT_DECISIONS_TOTAL.labels(backend=backend, result=result).inc()
 
 
 def generate_metrics_exposition(registry: CollectorRegistry = REGISTRY) -> tuple[bytes, str]:

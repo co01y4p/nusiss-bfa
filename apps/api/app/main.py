@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.middleware.metrics import PrometheusMetricsMiddleware
-from app.middleware.rate_limit import RateLimitMiddleware
+from app.middleware.rate_limit import RateLimitMiddleware, build_rate_limiter
 from app.monitoring.logging import setup_logging
 from app.monitoring.metrics import generate_metrics_exposition
 
@@ -30,6 +30,8 @@ app.add_middleware(
     max_requests_per_minute=settings.rate_limit_requests_per_minute,
     window_seconds=settings.rate_limit_window_seconds,
     enabled=settings.rate_limit_enabled,
+    limiter=build_rate_limiter(settings.rate_limit_backend, settings.valkey_url),
+    trusted_proxies=settings.trusted_proxy_networks,
 )
 app.add_middleware(
     CORSMiddleware,
