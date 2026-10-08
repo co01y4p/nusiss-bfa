@@ -869,7 +869,10 @@ export default function AssistantPage() {
   const send = useCallback(
     async (
       outgoing: string,
-      opts: { confirmAction?: "CREATE_INCIDENT" | "DECLINE"; echoUser?: boolean } = {},
+      opts: {
+        confirmAction?: "CREATE_INCIDENT" | "DECLINE";
+        echoUser?: boolean;
+      } = {},
     ) => {
       const { confirmAction, echoUser = true } = opts;
       let history: { role: string; content: string }[] = [];
@@ -1329,7 +1332,9 @@ export default function AssistantPage() {
               type="button"
               className="scenario-card-btn"
               onClick={() =>
-                setPreset("What time does the rooftop gym open on public holidays?")
+                setPreset(
+                  "What time does the rooftop gym open on public holidays?",
+                )
               }
             >
               <div className="scenario-card-title">
@@ -1575,8 +1580,7 @@ export default function AssistantPage() {
                   padding: "4px 14px",
                 }}
               >
-                {OUTCOME_STYLE[result.outcome]?.icon}{" "}
-                {result.outcome}
+                {OUTCOME_STYLE[result.outcome]?.icon} {result.outcome}
               </span>
             </div>
 
