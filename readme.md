@@ -22,7 +22,7 @@ This project's architecture, design decisions, and trade-offs are grounded in th
 - **8. Web Application Scope:** Pragmatic Next.js UI (`apps/web/`) serving as an operational harness for incident management, live agent trace visualization, and prompt/knowledge administration.
 - **9. Form vs Chatbot Interface:** Dual-mode architecture providing a non-AI "save-before-AI" form (`/report`) alongside a multi-turn conversational assistant (`/assistant`) that asks clarifying questions and remembers the conversation, both protected by M4 security guardrails.
 - **10. Database Architecture:** Stick with current shared database implementation (SQLAlchemy ORM + Alembic migrations, supporting existing SQLite and PostgreSQL/pgvector). No per-agent databases.
-- **11. Environments:** Single production environment deployed via Docker Compose (`compose.prod.yml`) behind Caddy reverse proxy with dev-prod parity.
+- **11. Environments:** Single production target using the same Docker Compose stack plus a hardened overlay (`infra/compose/compose.prod.yml`) behind a Caddy reverse proxy with automatic HTTPS. The overlay is verified by a local dry run; it has not been deployed to a server.
 - **12. RAG Scope:** Fully implemented in Milestone M3 (`apps/api/app/rag/`) grounding building policy inquiries (HVAC, operating hours, emergency procedures).
 
 For complete technical specifications and justifications, see **[docs/aas-baseline.md](docs/aas-baseline.md)**.
@@ -135,6 +135,22 @@ docker compose -f infra/compose/compose.yml up --build
 
 The web application is available at `http://localhost:3000`, the API at
 `http://localhost:8000`, and OpenAPI documentation at `http://localhost:8000/docs`.
+
+### Production overlay
+
+`infra/compose/compose.prod.yml` hardens the same stack for a server: Caddy is the only public service
+(automatic HTTPS), database/cache/API/web ports are not published, containers run as non-root with
+read-only filesystems and dropped capabilities, and the stack refuses to start without `POSTGRES_PASSWORD`
+and `JWT_SECRET`.
+
+```bash
+cp .env.production.example .env   # fill in real values
+docker compose --env-file .env -f infra/compose/compose.yml -f infra/compose/compose.prod.yml up -d --build
+```
+
+Step-by-step instructions are in [`docs/runbooks/first-start-production.md`](docs/runbooks/first-start-production.md).
+Backups (`scripts/backup_postgres.sh`, `scripts/restore_postgres.sh`) and the LLM-outage procedure are in
+[`docs/runbooks/`](docs/runbooks/).
 
 ### Observability Stack (Prometheus & Grafana)
 

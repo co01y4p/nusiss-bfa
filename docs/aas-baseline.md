@@ -20,7 +20,7 @@ Each section documents the official module guidance, our design decision, archit
 | 8 | **Web Application Scope** | Simple web UI is sufficient; focus on supporting solution requirements over UI complexity. | **Pragmatic Next.js Frontend.** Serves occupant submission, status lookup, live agent trace visualization, and manager review. | [`apps/web/`](../apps/web/) |
 | 9 | **Form-Based vs Chatbot Interface** | Form-based is allowed; prompt injection and conversational handling still apply. | **Dual-Mode Architecture (Form + Chatbot).** Non-AI "save-before-AI" form (`/report`) + multi-turn conversational assistant (`/assistant`) with client-held memory (bounded `history` window), clarifying questions (`NEEDS_CLARIFICATION`), and M4 guardrails. | [`apps/web/src/app/report/`](../apps/web/src/app/report/), [`apps/web/src/app/assistant/`](../apps/web/src/app/assistant/) |
 | 10 | **Database Architecture** | Shared database/schema acceptable where appropriate. | **Retain Current Shared Database Implementation.** Single shared schema (`apps/api/app/core/models.py`) via SQLAlchemy ORM + Alembic migrations (`apps/api/migrations/`), supporting current SQLite (`bfa.db`) and PostgreSQL (`pgvector`). No per-agent databases. | [`apps/api/app/core/database.py`](../apps/api/app/core/database.py), [`apps/api/app/core/models.py`](../apps/api/app/core/models.py) |
-| 11 | **Deployment Environments** | Single production environment is sufficient. | **Single Production Target with Local Compose Parity.** Deployable on VM via `compose.prod.yml` behind Caddy reverse proxy. | [`infra/compose/compose.prod.yml`](../infra/compose/compose.prod.yml) |
+| 11 | **Deployment Environments** | Single production environment is sufficient. | **Single Production Target with Local Compose Parity.** A hardened overlay (`compose.prod.yml`) behind a Caddy reverse proxy, verified by a local dry run; not yet deployed to a server. | [`infra/compose/compose.prod.yml`](../infra/compose/compose.prod.yml) |
 | 12 | **RAG Scope in Project** | RAG is preferred where appropriate, but not mandatory. | **RAG Fully Integrated as Agent Tool (Milestone M3).** Grounds building policy Q&A (aircon, operating hours, emergency procedures). | [`apps/api/app/rag/`](../apps/api/app/rag/), [`docs/source-material/`](../docs/source-material/) |
 
 ---
@@ -238,7 +238,7 @@ The project **sticks with the current database implementation**: a single shared
 #### Baseline Decision
 We maintain **local development and a single production deployment target** using Docker Compose:
 - **Local Development:** `docker compose -f infra/compose/compose.yml up` with hot reloading for FastAPI and Next.js, and local Postgres/Valkey containers.
-- **Production Deployment:** `docker compose -f infra/compose/compose.prod.yml up` deploying hardened multi-stage production builds behind a Caddy reverse proxy with automatic HTTPS and persistent volume mounts.
+- **Production Deployment:** `docker compose --env-file .env -f infra/compose/compose.yml -f infra/compose/compose.prod.yml up -d --build` deploys the multi-stage builds behind a Caddy reverse proxy with automatic HTTPS, non-root read-only containers, no published internal ports, and persistent volumes. See [`docs/runbooks/first-start-production.md`](runbooks/first-start-production.md).
 - **Continuous Integration (CI):** GitHub Actions workflow ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) running automated formatters, linters, unit tests, and Promptfoo regression evaluations on every pull request.
 
 ---

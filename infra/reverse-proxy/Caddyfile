@@ -1,0 +1,25 @@
+# Reverse proxy for the production overlay (infra/compose/compose.prod.yml).
+# SITE_DOMAIN is a real domain in production (Caddy obtains a Let's Encrypt
+# certificate automatically) and "localhost" for a local dry run.
+{$SITE_DOMAIN:localhost} {
+	encode gzip
+
+	# Prometheus scrapes the API over the internal network. Never publish it.
+	@metrics path /metrics /metrics/*
+	respond @metrics 404
+
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+}

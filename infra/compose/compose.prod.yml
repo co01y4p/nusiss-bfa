@@ -1,0 +1,103 @@
+# Production overlay. Use it together with the base file:
+#
+#   docker compose --env-file .env \
+#     -f infra/compose/compose.yml -f infra/compose/compose.prod.yml up -d --build
+#
+# Differences from the development stack:
+#   - Caddy is the only service with public ports (80/443, automatic HTTPS)
+#   - no published database/cache/API/web ports
+#   - web is built with a same-origin API URL (/api/v1), served through Caddy
+#   - no default passwords: POSTGRES_PASSWORD and JWT_SECRET must be set
+#   - read-only root filesystems, dropped capabilities, no-new-privileges
+#   - the protected evaluation API is forced off
+#
+# Requires Docker Compose 2.24 or later (uses !reset / !override).
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:-localhost}
+    volumes:
+      - ../reverse-proxy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:2019/config/ || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+
+  postgres:
+    restart: unless-stopped
+    ports: !reset []
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    security_opt: ["no-new-privileges:true"]
+
+  valkey:
+    restart: unless-stopped
+    ports: !reset []
+    security_opt: ["no-new-privileges:true"]
+
+  api:
+    restart: unless-stopped
+    ports: !reset []
+    environment:
+      APP_ENV: production
+      EVALUATION_ENABLED: "false"
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET (32+ characters) in .env}
+      DATABASE_URL: postgresql+psycopg://bfa:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/bfa
+      CORS_ORIGINS: https://${SITE_DOMAIN:-localhost}
+    read_only: true
+    tmpfs:
+      - /tmp
+    volumes:
+      # Approved source documents for `python -m app.scripts.ingest_document` (first start).
+      - ../../docs/source-material:/data/source-material:ro
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+  web:
+    build:
+      args:
+        NEXT_PUBLIC_API_URL: /api/v1
+    restart: unless-stopped
+    ports: !reset []
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/.next/cache:uid=1000,gid=1000
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+  # Optional (--profile observability): reachable from the host only.
+  prometheus:
+    restart: unless-stopped
+    ports: !override
+      - "127.0.0.1:9090:9090"
+
+  grafana:
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    ports: !override
+      - "127.0.0.1:3001:3000"
+
+volumes:
+  caddy_data:
+  caddy_config:

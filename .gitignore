@@ -15,3 +15,5 @@ htmlcov/
 *.tsbuildinfo
 *.db
 evals/promptfoo/results-*.json
+backups/
+.env.production

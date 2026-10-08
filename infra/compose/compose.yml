@@ -50,10 +50,17 @@ services:
   web:
     build:
       context: ../../apps/web
-    environment:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
     ports:
       - "3000:3000"
+    healthcheck:
+      # Next.js standalone binds to the container hostname, not 127.0.0.1.
+      test: ["CMD-SHELL", "node -e \"fetch('http://'+require('os').hostname()+':3000/').then(r=>process.exit(r.status<500?0:1),()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
     depends_on:
       api:
         condition: service_healthy
