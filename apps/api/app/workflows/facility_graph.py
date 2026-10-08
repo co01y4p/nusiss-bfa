@@ -12,7 +12,7 @@ from app.agents.intent import Intent, IntentAgent
 from app.agents.priority import PriorityAgent
 from app.agents.response import ResponseAgent
 from app.agents.review import ReviewAgent
-from app.agents.security import SecurityAgent
+from app.agents.security import QUARANTINE_THRESHOLD, SecurityAgent
 from app.core.config import Settings
 from app.domain.incidents.policies import detect_critical_hazards
 from app.monitoring.langfuse import LangfuseTracer
@@ -40,6 +40,25 @@ MAX_HISTORY_TURNS = 6
 CONFIRM_TIMEOUT_SECONDS = 15
 MAX_HISTORY_TURN_CHARS = 2000
 HISTORY_ROLES = {"user", "assistant"}
+EMERGENCY_CONTACTS = ("6789 0001", "6789 0002", "995")
+P1_SAFETY_LINE = (
+    "If anyone is in danger, move to a safe place now and call the Facility Emergency "
+    "Hotline at +65 6789 0001, or 995 for fire."
+)
+
+
+def incident_acknowledgement_template(reference_code: str, priority: str, team: str) -> str:
+    """Deterministic acknowledgement used when the model omits the reference code."""
+    message = (
+        f"Thank you for your report. It has been logged as {reference_code} with "
+        f"priority {priority} and assigned to {team}."
+    )
+    return f"{message} {P1_SAFETY_LINE}" if priority == "P1" else message
+
+
+def status_update_template(lookup: dict[str, Any]) -> str:
+    """Deterministic status reply built only from looked-up fields."""
+    return f"Your report {lookup['reference_code']} is currently {lookup['status']}."
 
 
 def normalize_history(history: list[dict[str, str]] | None) -> list[dict[str, str]]:
@@ -246,6 +265,7 @@ class FacilityWorkflow:
         confirm_action: str | None = None,
     ) -> WorkflowState:
         normalized = text.strip()
+        location = (location or "").strip() or None
         if not normalized:
             raise ValueError("Message must not be empty")
         if len(normalized) > self.settings.max_input_chars:
@@ -365,7 +385,7 @@ class FacilityWorkflow:
         self._check_bounds(state, model_call=True)
         security = await self.security.run(payload)
         self._record_model_output(state, "security", payload, security)
-        if security.risk_score >= 0.8:
+        if security.risk_score >= QUARANTINE_THRESHOLD:
             state.outcome = "QUARANTINED"
             state.final_response = "This request was quarantined for manager review."
             self._record(
@@ -623,6 +643,7 @@ class FacilityWorkflow:
 
         priority_payload = {
             "text": state.effective_text,
+            "summary": extraction.summary,
             "hazard_codes": [code.value for code in extraction.hazard_codes],
             "category": classification.category.value,
             "recent_similar_incidents": recent_incidents,
@@ -697,6 +718,30 @@ class FacilityWorkflow:
         self._check_bounds(state, model_call=True)
         response = await self.response.run(response_payload)
         self._record_model_output(state, "incident_response", response_payload, response)
+        if reference_code not in response.message:
+            # An acknowledgement without the reference code is useless to the occupant
+            # and always fails review, so fall back to the deterministic template.
+            response.message = incident_acknowledgement_template(
+                reference_code, priority.priority.value, assignment.team.value
+            )
+            response.citations = []
+            self._record(
+                state,
+                "response_guard",
+                {"message": response.message},
+                ["RESPONSE_TEMPLATE_GUARD"],
+            )
+        elif priority.priority.value == "P1" and not any(
+            contact in response.message for contact in EMERGENCY_CONTACTS
+        ):
+            # A P1 acknowledgement must always tell the occupant how to get help now.
+            response.message = f"{response.message.rstrip()} {P1_SAFETY_LINE}"
+            self._record(
+                state,
+                "response_guard",
+                {"message": response.message},
+                ["P1_SAFETY_GUIDANCE_ADDED"],
+            )
         await self._review_and_finalize(
             state,
             response.message,
@@ -825,6 +870,15 @@ class FacilityWorkflow:
         response_payload = {"status_lookup": lookup.data}
         response = await self.response.run(response_payload)
         self._record_model_output(state, "status_response", response_payload, response)
+        if reference_code not in response.message.upper() and isinstance(lookup.data, dict):
+            response.message = status_update_template(lookup.data)
+            response.citations = []
+            self._record(
+                state,
+                "response_guard",
+                {"message": response.message},
+                ["RESPONSE_TEMPLATE_GUARD"],
+            )
         await self._review_and_finalize(
             state, response.message, response.citations, response_type="STATUS_UPDATE"
         )
@@ -903,8 +957,9 @@ class FacilityWorkflow:
                 },
                 validation.reason_codes,
             )
-            # Only lead with the grounded answer when it actually checks out.
-            if validation.is_valid:
+            # Only lead with the grounded answer when it actually checks out. A refusal
+            # carries no citations and would only push the question down.
+            if validation.is_valid and answer.citations:
                 message = f"{answer.message}\n\n{question}"
                 citations = answer.citations
 

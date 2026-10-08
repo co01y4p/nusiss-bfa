@@ -137,8 +137,10 @@ class IntentAgent(BaseAgent[IntentOutput]):
                 self.final_model_input = None
                 created: dict[str, str] | None = None
 
-                if output.intent == Intent.INCIDENT_REPORT:
+                if output.intent == Intent.INCIDENT_REPORT and registry is not None:
                     # Turn 2 — the decision is made; now the model calls the typed tool.
+                    # Skipped without a registry (classification-only callers such as the
+                    # evaluation API), where the call could never succeed.
                     log_payload = {
                         **payload,
                         "_decision": {

@@ -43,6 +43,7 @@ class OpenAICompatibleStructuredLLM:
         api_style: Literal["responses", "chat_completions"] = "chat_completions",
         reasoning_effort: str = "minimal",
         max_output_tokens: int = 1024,
+        attempt_timeout_seconds: float | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
         circuit_breaker: CircuitBreaker | None = None,
         redact_pii_inputs: bool = True,
@@ -53,6 +54,7 @@ class OpenAICompatibleStructuredLLM:
         self.api_style = api_style
         self.reasoning_effort = reasoning_effort
         self.max_output_tokens = max_output_tokens
+        self.attempt_timeout_seconds = attempt_timeout_seconds
         self.transport = transport
         self.circuit_breaker = circuit_breaker or default_circuit_breaker
         self.redact_pii_inputs = redact_pii_inputs
@@ -65,6 +67,12 @@ class OpenAICompatibleStructuredLLM:
                 limits=httpx.Limits(max_keepalive_connections=20, max_connections=100),
             )
         return self._client
+
+    def _attempt_timeout(self, timeout_seconds: float) -> float:
+        """Cap a single HTTP attempt so transient stalls are retried, not waited out."""
+        if self.attempt_timeout_seconds is None:
+            return timeout_seconds
+        return min(timeout_seconds, self.attempt_timeout_seconds)
 
     async def aclose(self) -> None:
         if self._client is not None and not self._client.is_closed:
@@ -212,7 +220,7 @@ class OpenAICompatibleStructuredLLM:
                 f"{self.base_url}/responses",
                 headers={"Authorization": f"Bearer {self.api_key}"},
                 json=request_body,
-                timeout=timeout_seconds,
+                timeout=self._attempt_timeout(timeout_seconds),
             )
             response.raise_for_status()
             payload = response.json()
@@ -255,7 +263,7 @@ class OpenAICompatibleStructuredLLM:
                 f"{self.base_url}/chat/completions",
                 headers={"Authorization": f"Bearer {self.api_key}"},
                 json=request_body,
-                timeout=timeout_seconds,
+                timeout=self._attempt_timeout(timeout_seconds),
             )
             response.raise_for_status()
             payload = response.json()
@@ -483,7 +491,7 @@ class OpenAICompatibleStructuredLLM:
                 f"{self.base_url}/{path}",
                 headers={"Authorization": f"Bearer {self.api_key}"},
                 json=body,
-                timeout=timeout_seconds,
+                timeout=self._attempt_timeout(timeout_seconds),
             )
             response.raise_for_status()
             data: dict[str, Any] = response.json()

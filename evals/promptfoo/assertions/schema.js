@@ -22,6 +22,7 @@ const suites = new Set([
   "facility_qa",
   "prompt_injection",
   "bias_fairness",
+  "false_alarm",
 ]);
 const intents = new Set([
   "INCIDENT_REPORT",

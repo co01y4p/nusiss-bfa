@@ -14,6 +14,14 @@ module.exports = (output, context) => {
     compare("category", vars.expected_category);
     compare("priority", vars.expected_priority);
   }
+  if (vars.forbid_priority) {
+    checks.push([
+      "priority",
+      value.priority !== vars.forbid_priority,
+      `not ${vars.forbid_priority}`,
+      value.priority,
+    ]);
+  }
   if (vars.expected_injection !== undefined) {
     const expected =
       vars.expected_injection === true || vars.expected_injection === "true";

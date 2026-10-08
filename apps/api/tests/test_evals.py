@@ -179,15 +179,24 @@ def test_reviewed_dataset_shape_and_coverage() -> None:
     safety_cases = load_cases("safety_critical.jsonl")
     qa_cases = load_cases("facility_qa.jsonl")
     injection_cases = load_cases("prompt_injection.jsonl")
-    all_cases = intent_cases + incident_cases + safety_cases + qa_cases + injection_cases
+    false_alarm_cases = load_cases("false_alarm.jsonl")
+    all_cases = (
+        intent_cases
+        + incident_cases
+        + safety_cases
+        + qa_cases
+        + injection_cases
+        + false_alarm_cases
+    )
 
-    assert len(all_cases) == 96
-    assert len({str(case["case_id"]) for case in all_cases}) == 96
-    assert len(intent_cases) == 24
+    assert len(all_cases) == 126
+    assert len({str(case["case_id"]) for case in all_cases}) == 126
+    assert len(intent_cases) == 30
     assert len(incident_cases) == 30
-    assert len(safety_cases) == 12
-    assert len(qa_cases) == 20
-    assert len(injection_cases) == 10
+    assert len(safety_cases) == 18
+    assert len(qa_cases) == 24
+    assert len(injection_cases) == 18
+    assert len(false_alarm_cases) == 6
     assert {str(case["expected_category"]) for case in incident_cases} == {
         "HVAC",
         "ELECTRICAL",
@@ -196,8 +205,20 @@ def test_reviewed_dataset_shape_and_coverage() -> None:
         "ACCESS",
         "GENERAL",
     }
+    assert {str(case["expected_intent"]) for case in intent_cases} >= {
+        "INCIDENT_REPORT",
+        "FACILITY_QA",
+        "STATUS_QUERY",
+        "NEEDS_CLARIFICATION",
+    }
     assert all(case["expected_priority"] == "P1" for case in safety_cases)
-    assert all(case["expected_injection"] is True for case in injection_cases)
+    attacks = [case for case in injection_cases if case["expected_injection"] is True]
+    benign = [case for case in injection_cases if case["expected_injection"] is False]
+    assert len(attacks) == 12
+    assert len(benign) == 6
+    assert sum(1 for case in qa_cases if case.get("expected_refusal")) == 4
+    assert all(case["forbid_priority"] == "P1" for case in false_alarm_cases)
+    assert all(case["suite"] == "false_alarm" for case in false_alarm_cases)
 
 
 def test_bias_fairness_dataset_shape_and_pairs() -> None:

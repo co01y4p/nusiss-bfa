@@ -202,6 +202,12 @@ const NODE_METADATA: Record<string, NodeMeta> = {
     category: "domain",
     role: "Synthesize a status update from the tool lookup result",
   },
+  response_guard: {
+    title: "Response Template Guard",
+    icon: "🧷",
+    category: "policy",
+    role: "Deterministic fallback when the generated reply omits the reference code",
+  },
 };
 
 function getNodeMeta(node: string): NodeMeta {
@@ -1083,6 +1089,128 @@ export default function AssistantPage() {
           </span>
         </div>
 
+        <p className="lede" style={{ marginBottom: "0.5rem" }}>
+          Click a facility in the building below to auto-fill the location and a
+          sample message — useful when reporting an issue tied to a specific
+          area.
+        </p>
+        <BuildingMap
+          selectedId={selectedFacilityId}
+          onSelect={selectFacility}
+        />
+
+        <form onSubmit={submit}>
+          <label htmlFor="message">
+            {awaitingReply
+              ? "Reply to the assistant's question"
+              : "User Message / Prompt"}
+          </label>
+          <textarea
+            id="message"
+            name="message"
+            value={messageText}
+            onChange={(e) => setMessageText(e.target.value)}
+            placeholder={
+              awaitingReply
+                ? "e.g. It's the aircon in room 3-01, yes please log it."
+                : "e.g. What are the building operating hours? OR Report a leaking pipe on Level 3."
+            }
+            maxLength={8000}
+            required
+          />
+
+          <label htmlFor="location">Location (optional)</label>
+          <input
+            id="location"
+            name="location"
+            value={locationText}
+            onChange={(e) => {
+              setLocationText(e.target.value);
+              setSelectedFacilityId(null);
+            }}
+            placeholder="e.g. Block B Level 2"
+            maxLength={200}
+          />
+
+          <div
+            style={{
+              display: "flex",
+              gap: "1rem",
+              alignItems: "center",
+              marginTop: "0.75rem",
+              flexWrap: "wrap",
+            }}
+          >
+            <button
+              type="submit"
+              disabled={busy}
+              style={{
+                width: "auto",
+                padding: "0.65rem 1.65rem",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "8px",
+                fontSize: "0.95rem",
+              }}
+            >
+              {busy ? (
+                <>
+                  <span className="agent-live-dot" />
+                  Running Multi-Agent Workflow...
+                </>
+              ) : awaitingReply ? (
+                <>💬 Send Reply</>
+              ) : (
+                <>🚀 Run Multi-Agent Workflow</>
+              )}
+            </button>
+
+            {messages.length > 0 && (
+              <button
+                type="button"
+                onClick={resetConversation}
+                disabled={busy}
+                style={{
+                  width: "auto",
+                  padding: "0.65rem 1.2rem",
+                  background: "#f1f5f9",
+                  color: "#334155",
+                  fontSize: "0.9rem",
+                }}
+              >
+                🧹 New Conversation
+              </button>
+            )}
+
+            <Link href="/knowledge" style={{ fontSize: "0.9rem" }}>
+              Manage Knowledge Base (RAG) &rarr;
+            </Link>
+            <Link href="/manager" style={{ fontSize: "0.9rem" }}>
+              Manager Incident Queue &rarr;
+            </Link>
+          </div>
+        </form>
+
+        {busy && (
+          <div className="agent-live-running">
+            <div className="agent-live-dot" />
+            <div>
+              <div style={{ fontWeight: 700, fontSize: "0.92rem" }}>
+                Agent Graph Traversing Nodes:
+              </div>
+              <div style={{ fontSize: "0.85rem", marginTop: "2px" }}>
+                {liveSteps[activeStepIndex]}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div className="notice error" style={{ marginTop: "1rem" }}>
+            {error}
+          </div>
+        )}
+
         {/* Quick Test Scenarios with Agent Route Insights */}
         <div style={{ margin: "1.25rem 0" }}>
           <div
@@ -1290,128 +1418,6 @@ export default function AssistantPage() {
             </button>
           </div>
         </div>
-
-        <p className="lede" style={{ marginBottom: "0.5rem" }}>
-          Click a facility in the building below to auto-fill the location and a
-          sample message — useful when reporting an issue tied to a specific
-          area.
-        </p>
-        <BuildingMap
-          selectedId={selectedFacilityId}
-          onSelect={selectFacility}
-        />
-
-        <form onSubmit={submit}>
-          <label htmlFor="message">
-            {awaitingReply
-              ? "Reply to the assistant's question"
-              : "User Message / Prompt"}
-          </label>
-          <textarea
-            id="message"
-            name="message"
-            value={messageText}
-            onChange={(e) => setMessageText(e.target.value)}
-            placeholder={
-              awaitingReply
-                ? "e.g. It's the aircon in room 3-01, yes please log it."
-                : "e.g. What are the building operating hours? OR Report a leaking pipe on Level 3."
-            }
-            maxLength={8000}
-            required
-          />
-
-          <label htmlFor="location">Location (optional)</label>
-          <input
-            id="location"
-            name="location"
-            value={locationText}
-            onChange={(e) => {
-              setLocationText(e.target.value);
-              setSelectedFacilityId(null);
-            }}
-            placeholder="e.g. Block B Level 2"
-            maxLength={200}
-          />
-
-          <div
-            style={{
-              display: "flex",
-              gap: "1rem",
-              alignItems: "center",
-              marginTop: "0.75rem",
-              flexWrap: "wrap",
-            }}
-          >
-            <button
-              type="submit"
-              disabled={busy}
-              style={{
-                width: "auto",
-                padding: "0.65rem 1.65rem",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "8px",
-                fontSize: "0.95rem",
-              }}
-            >
-              {busy ? (
-                <>
-                  <span className="agent-live-dot" />
-                  Running Multi-Agent Workflow...
-                </>
-              ) : awaitingReply ? (
-                <>💬 Send Reply</>
-              ) : (
-                <>🚀 Run Multi-Agent Workflow</>
-              )}
-            </button>
-
-            {messages.length > 0 && (
-              <button
-                type="button"
-                onClick={resetConversation}
-                disabled={busy}
-                style={{
-                  width: "auto",
-                  padding: "0.65rem 1.2rem",
-                  background: "#f1f5f9",
-                  color: "#334155",
-                  fontSize: "0.9rem",
-                }}
-              >
-                🧹 New Conversation
-              </button>
-            )}
-
-            <Link href="/knowledge" style={{ fontSize: "0.9rem" }}>
-              Manage Knowledge Base (RAG) &rarr;
-            </Link>
-            <Link href="/manager" style={{ fontSize: "0.9rem" }}>
-              Manager Incident Queue &rarr;
-            </Link>
-          </div>
-        </form>
-
-        {busy && (
-          <div className="agent-live-running">
-            <div className="agent-live-dot" />
-            <div>
-              <div style={{ fontWeight: 700, fontSize: "0.92rem" }}>
-                Agent Graph Traversing Nodes:
-              </div>
-              <div style={{ fontSize: "0.85rem", marginTop: "2px" }}>
-                {liveSteps[activeStepIndex]}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {error && (
-          <div className="notice error" style={{ marginTop: "1rem" }}>
-            {error}
-          </div>
-        )}
       </section>
 
       {/* Conversation thread: what the occupant and assistant have said so far */}

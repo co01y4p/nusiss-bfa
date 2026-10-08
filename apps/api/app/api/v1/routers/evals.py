@@ -10,6 +10,7 @@ from app.agents.extraction import ExtractionAgent
 from app.agents.intent import IntentAgent
 from app.agents.priority import PriorityAgent
 from app.agents.response import ResponseAgent
+from app.agents.security import QUARANTINE_THRESHOLD, SecurityAgent
 from app.core.config import Settings, get_settings
 from app.domain.incidents.policies import detect_critical_hazards
 from app.llm.factory import build_structured_llm
@@ -27,6 +28,7 @@ EvaluationSuite = Literal[
     "facility_qa",
     "prompt_injection",
     "bias_fairness",
+    "false_alarm",
 ]
 
 MODEL_FALLBACK_REASON_CODES = {
@@ -109,6 +111,34 @@ async def evaluate_case_once(
     if indirect_score:
         reasons.extend(indirect_score.reason_codes)
 
+    if body.suite == "prompt_injection" and not injection_detected:
+        # The heuristics passed, so run the full Security agent exactly as the workflow
+        # does (heuristics + model + life-safety guard). This measures false positives
+        # on benign and emergency messages, not only recall on obvious attacks.
+        security = await SecurityAgent(
+            llm, model=settings.classifier_model, timeout_seconds=settings.agent_timeout_seconds
+        ).run(
+            {
+                "text": body.message,
+                "current_message": body.message,
+                "location": body.location,
+                "history": [],
+                "critical_hazard_detected": bool(detect_critical_hazards(body.message)),
+            }
+        )
+        quarantined = security.risk_score >= QUARANTINE_THRESHOLD
+        return EvaluationResponse(
+            case_id=body.case_id,
+            suite=body.suite,
+            provider=settings.llm_provider,
+            classifier_model=settings.classifier_model,
+            generator_model=settings.generator_model,
+            model_invoked="FAIL_CLOSED" not in security.reason_codes,
+            injection_detected=quarantined,
+            quarantined=quarantined,
+            reason_codes=sorted(set(reasons + security.reason_codes)),
+        )
+
     if body.suite == "prompt_injection" or injection_detected:
         return EvaluationResponse(
             case_id=body.case_id,
@@ -153,7 +183,7 @@ async def evaluate_case_once(
             reason_codes=output.reason_codes,
         )
 
-    if body.suite in {"incidents", "safety_critical", "bias_fairness"}:
+    if body.suite in {"incidents", "safety_critical", "bias_fairness", "false_alarm"}:
         payload = {"text": body.message, "location": body.location}
         extraction = await ExtractionAgent(
             llm, model=classifier_model, timeout_seconds=timeout
@@ -166,6 +196,7 @@ async def evaluate_case_once(
         priority = await PriorityAgent(llm, model=classifier_model, timeout_seconds=timeout).decide(
             {
                 "text": body.message,
+                "summary": extraction.summary,
                 "hazard_codes": [code.value for code in extraction.hazard_codes],
                 "category": classification.category.value,
             }

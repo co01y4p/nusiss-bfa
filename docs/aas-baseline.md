@@ -12,7 +12,7 @@ Each section documents the official module guidance, our design decision, archit
 |---|------------------|-----------------------------|------------------|---------------------------------|
 | 1 | **Distributed Architecture & A2A** | Not mandatory to be distributed; multi-agent required; architecture depends on business case. | **Bounded In-Process Multi-Agent Graph.** Centralized state machine with specialized agents. | [`apps/api/app/workflows/facility_graph.py`](../apps/api/app/workflows/facility_graph.py) |
 | 2 | **Model Performance & Fine-Tuning** | Existing foundation models/APIs; fine-tune only when clearly needed. | **Foundation LLMs via OpenAI/OpenRouter API.** Prompt engineering + few-shot + RAG context; no fine-tuning. | [`apps/api/app/llm/`](../apps/api/app/llm/) |
-| 3 | **Model Evaluation & Selection** | Justified selection appropriate to requirements/constraints; universal "best" not required. | **Empirical Evaluation via Promptfoo.** 96-case benchmark covering intent, classification F1, hazard recall, and injection defense. | [`evals/promptfoo/`](../evals/promptfoo/) |
+| 3 | **Model Evaluation & Selection** | Justified selection appropriate to requirements/constraints; universal "best" not required. | **Empirical Evaluation via Promptfoo.** 126-case benchmark covering intent, classification F1, hazard recall, false-alarm escalation, injection defense, and latency, plus a 10-case end-to-end workflow suite. | [`evals/promptfoo/`](../evals/promptfoo/) |
 | 4 | **MLSecOps & Data Drift Detection** | Observation & detection required; prompt/RAG/model updates before fine-tuning. | **Langfuse Tracing + Prometheus Metrics + Prompt Studio.** Real-time schema/drift detection; dynamic prompt updates. | [`apps/api/app/monitoring/`](../apps/api/app/monitoring/), [`apps/web/src/app/prompts/`](../apps/web/src/app/prompts/) |
 | 5 | **Scalability & Reliability Controls** | Architecture must address expected workloads and failures; identify top risks and controls. | **Stateless API, Valkey Rate Limiting, LLM Circuit Breaker, Deterministic Fallbacks.** | [`apps/api/app/security/circuit_breaker.py`](../apps/api/app/security/circuit_breaker.py), [`apps/api/app/middleware/rate_limit.py`](../apps/api/app/middleware/rate_limit.py) |
 | 6 | **MCP vs Direct APIs/CLI** | MCP not mandatory; choose based on architectural benefit and justify. | **Direct Typed Tool Registry (`ToolRegistry`) with RBAC.** Eliminates external RPC overhead; strict Pydantic schemas. | [`apps/api/app/tools/registry.py`](../apps/api/app/tools/registry.py), [`apps/api/app/tools/incident_tools.py`](../apps/api/app/tools/incident_tools.py) |
@@ -75,12 +75,14 @@ We utilize **commercial foundation models (OpenAI / OpenRouter API)**, specifica
 > The objective is not necessarily to identify the universally “best” model, but to select a model that is appropriate for your requirements and constraints. You should provide a reasonable justification for the model selected.
 
 #### Baseline Decision
-We implement a **systematic evaluation pipeline via Promptfoo** ([`evals/promptfoo/`](../evals/promptfoo/)) containing **96 test cases** across five critical evaluation axes:
+We implement a **systematic evaluation pipeline via Promptfoo** ([`evals/promptfoo/`](../evals/promptfoo/)) containing **126 test cases** across these evaluation axes:
 1. **Critical-Hazard Recall:** Must achieve 100% recall for immediate safety risks (gas leaks, exposed wires, active flooding).
 2. **Classification Macro-F1:** Accuracy across electrical, plumbing, HVAC, structural, and custodial categories.
 3. **Prompt-Injection Resistance:** Defense against direct jailbreaks and indirect RAG chunk injections (target >= 95%).
 4. **Citation Grounding:** Verification that responses reference valid chunk IDs from the knowledge base without hallucination.
 5. **Deterministic Consistency:** Repeated evaluations verifying identical outputs for deterministic inputs.
+6. **False-Alarm Control:** Non-emergency reports that mention safety equipment (smoke detectors, fire doors) must not be escalated to P1, and benign or emergency messages must never be quarantined.
+7. **Responsiveness:** A p95 latency budget on evaluation calls, and a 45-second per-message budget on the end-to-end workflow suite.
 
 #### Selected Models & Rationale
 - **Primary Generator/Classifier (`gpt-4o-mini`):** Delivers sub-800ms latency, high prompt injection resistance, native structured JSON schema compliance, and low cost per 1M tokens, well within operational facility constraints.

@@ -21,6 +21,7 @@ def build_structured_llm(settings: Settings, *, allow_fake: bool = True) -> Stru
             api_style="responses" if settings.llm_provider == "openai" else "chat_completions",
             reasoning_effort=settings.llm_reasoning_effort,
             max_output_tokens=settings.llm_max_output_tokens,
+            attempt_timeout_seconds=settings.llm_attempt_timeout_seconds,
             redact_pii_inputs=settings.redact_pii_in_llm_prompts,
         )
     raise RuntimeError(f"Unsupported LLM provider: {settings.llm_provider}")

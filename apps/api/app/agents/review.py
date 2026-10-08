@@ -4,9 +4,12 @@ from app.agents.base import BaseAgent, StrictAgentModel
 
 
 class ReviewOutput(StrictAgentModel):
-    approved: bool
+    # Field order is the generation order under strict structured output: the model
+    # names concrete defects first and only then decides, so the verdict follows the
+    # findings instead of being rationalised after the fact.
     issues: list[str]
     reason_codes: list[str]
+    approved: bool
 
 
 class ReviewAgent(BaseAgent[ReviewOutput]):

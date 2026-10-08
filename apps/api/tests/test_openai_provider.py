@@ -249,3 +249,46 @@ async def test_openai_reuses_persistent_http_client() -> None:
 
     await provider.aclose()
     assert client1.is_closed
+
+
+@pytest.mark.asyncio
+async def test_stalled_attempt_times_out_early_and_is_retried() -> None:
+    timeouts: list[float] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        timeouts.append(request.extensions["timeout"]["read"])
+        if len(timeouts) == 1:
+            raise httpx.ReadTimeout("stalled", request=request)
+        return httpx.Response(
+            200,
+            json={
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [
+                            {"type": "output_text", "text": '{"label":"OK","confidence":1}'}
+                        ],
+                    }
+                ]
+            },
+        )
+
+    provider = OpenAICompatibleStructuredLLM(
+        base_url="https://api.openai.com/v1",
+        api_key="test-key",
+        api_style="responses",
+        attempt_timeout_seconds=5,
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await provider.generate(
+        system_prompt="Classify the request.",
+        user_payload={"text": "The lobby light is broken."},
+        output_schema=ExampleOutput,
+        model="gpt-5-nano",
+        timeout_seconds=30,
+    )
+
+    assert result == ExampleOutput(label="OK", confidence=1)
+    # Each attempt is capped below the agent budget, so the stall is retried.
+    assert timeouts == [5, 5]

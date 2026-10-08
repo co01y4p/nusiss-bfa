@@ -14,7 +14,7 @@ This project's architecture, design decisions, and trade-offs are grounded in th
 
 - **1. Multi-Agent Architecture:** Bounded in-process graph (`apps/api/app/workflows/facility_graph.py`) orchestrated with specialized agents; non-distributed by design to avoid network partitioning and latency.
 - **2. Model Selection & Fine-Tuning:** Uses foundation models via OpenAI/OpenRouter APIs; fine-tuning is omitted in favor of few-shot prompt engineering and pgvector RAG context.
-- **3. Model Evaluation:** Systematic 96-case Promptfoo suite (`evals/promptfoo/`) enforcing 100% critical hazard recall, >=95% prompt injection resistance, and strict schema validity.
+- **3. Model Evaluation:** Systematic 126-case Promptfoo suite (`evals/promptfoo/`) enforcing 100% critical hazard recall (including paraphrased hazards), zero false P1 escalations on non-emergency reports, >=95% prompt injection resistance with zero quarantined benign or emergency messages, a p95 latency budget, and strict schema validity, plus a 10-case end-to-end suite through the full workflow.
 - **4. MLSecOps & Data Drift:** Real-time observability via Langfuse and Prometheus; prompt updates via Prompt Studio (`/prompts`) and RAG re-indexing over model fine-tuning.
 - **5. Scalability & Reliability:** Stateless API scaling, Valkey sliding-window rate limiting, LLM Circuit Breaker, and deterministic fallback to human review (`review`).
 - **6. Tool Integration & MCP:** Direct in-process typed Tool Registry (`ToolRegistry`) with Pydantic validation and RBAC; avoids unnecessary external MCP IPC overhead.
@@ -75,9 +75,11 @@ For complete technical specifications and justifications, see **[docs/aas-baseli
   - **Rate Limiting Middleware:** sliding-window rate limiter protecting public endpoints against abuse.
   - **Security Events Audit Trail:** `security_events` table and repository logging high-severity injection attempts, policy violations, and anomalous requests.
   - **File Ingestion Validation:** strict file extension, mime-type, and size boundaries preventing malicious file uploads.
-- **M5 (Evaluation):** a protected, development/CI-only evaluation API and a 96-case Promptfoo suite running against the configured real LLM and measuring intent accuracy,
+- **M5 (Evaluation):** a protected, development/CI-only evaluation API and a 126-case Promptfoo suite running against the configured real LLM and measuring intent accuracy,
   classification macro F1, critical-hazard recall, direct and indirect prompt-injection resistance, strict output schemas,
-  citation validity, and repeated-run consistency. Pull requests run the critical 23-case regression set, while pushes to
+  citation validity, refusal of unanswerable questions, false-alarm escalation, p95 latency, and repeated-run consistency.
+  A separate end-to-end suite (`pnpm eval:e2e`) sends cases through `/api/v1/assistant/messages` and checks the outcome an
+  occupant receives. Pull requests run the critical 43-case regression set, while pushes to
   `master` and manual workflow runs execute the complete suite. Aggregate metric gates enforce 100% critical-hazard recall,
   at least 95% prompt-injection resistance, and the documented quality targets under `evals/promptfoo/`.
 - **M6 (Observability & Metrics):**

@@ -4,7 +4,7 @@ from typing import Any
 from pydantic import Field
 
 from app.agents.base import BaseAgent, StrictAgentModel
-from app.domain.incidents.policies import determine_priority
+from app.domain.incidents.policies import detect_critical_hazards, determine_priority
 
 
 class Priority(StrEnum):
@@ -39,7 +39,18 @@ class PriorityAgent(BaseAgent[PrioritySignalOutput]):
         )
 
     async def decide(self, payload: dict[str, Any]) -> PriorityDecision:
-        signal = await self.run(payload)
+        # Extraction can propose hazards the text does not support (a dripping tap
+        # tagged EXPOSED_LIVE_WIRE). Only text-confirmed codes are presented as
+        # hazards; the rest are marked as unconfirmed suspicions for the model to weigh.
+        proposed = {str(code) for code in payload.get("hazard_codes", [])}
+        confirmed = detect_critical_hazards(str(payload.get("text", "")))
+        signal = await self.run(
+            {
+                **payload,
+                "hazard_codes": sorted(proposed & confirmed),
+                "suspected_hazards": sorted(proposed - confirmed),
+            }
+        )
         priority, reasons, review = determine_priority(
             set(payload.get("hazard_codes", [])),
             signal.priority.value,

@@ -9,7 +9,8 @@
     "eval:bias": "promptfoo eval -c promptfooconfig.yaml --filter-metadata dimension --no-cache -o results-bias.json",
     "metrics:critical": "node scripts/check_metrics.mjs results-critical.json",
     "metrics:full": "node scripts/check_metrics.mjs results-full.json",
-    "metrics:bias": "node scripts/check_metrics.mjs results-bias.json"
+    "metrics:bias": "node scripts/check_metrics.mjs results-bias.json",
+    "eval:e2e": "promptfoo eval -c promptfooconfig.e2e.yaml --no-cache -o results-e2e.json -j 2"
   },
   "devDependencies": {
     "promptfoo": "0.122.2"

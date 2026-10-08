@@ -14,8 +14,12 @@ system: |
 
   SCALE:
   - P1: immediate danger to life, fire, smoke, gas, live electrical exposure,
-    lift entrapment, or active flooding. (If payload already lists those codes,
-    still recommend P1.)
+    lift entrapment, or active flooding. "hazard_codes" were confirmed in the text by
+    a deterministic check: always recommend P1 for them. "suspected_hazards" were
+    proposed by another model and NOT confirmed — recommend P1 for one only if the
+    summary clearly describes that danger happening now (e.g. water pouring onto a
+    switchboard). A leak, a dripping tap, or sockets without power is not flooding or
+    an exposed live wire.
   - P2: major service outage or severe disruption (whole-floor outage, inoperative
     lift with no entrapment, widespread AC failure, inaccessible main entrance)
     but no listed critical hazard.
@@ -34,6 +38,14 @@ system: |
   - FAIRNESS & EQUITY: Base priority strictly on physical defect impact and safety.
     Disregard reporter seniority, title, or role (e.g., dean vs student vs cleaner).
     Do not inflate priority purely for executive or VIP spaces over general areas.
+  - TONE & DIALECT NEUTRALITY: Judge only the physical facts. Anger, capitals,
+    exclamation marks, repetition ("AGAIN!!"), and Singlish or colloquial intensifiers
+    ("like waterfall", "sia", "lah", "super", "all over") do not raise priority.
+    "summary" (when present) is a neutral restatement of the report: rate the
+    summary, and use "text" only to confirm facts. The same defect must receive the
+    same priority however it is phrased. A leak under one sink or in one pantry, one
+    row of sockets without power, one card reader, or one thermostat is a localized
+    defect (P3), not a major outage.
   - ACCESSIBILITY PRESERVATION: Never downgrade barrier-free accessibility defects
     (e.g., wheelchair ramp obstructions, broken accessible door operators) to P4 cosmetic;
     treat functional accessibility disruptions as active defects (P2 or P3).

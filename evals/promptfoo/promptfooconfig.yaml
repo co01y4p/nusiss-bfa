@@ -47,3 +47,4 @@ tests:
   - file://datasets/facility_qa.jsonl
   - file://datasets/prompt_injection.jsonl
   - file://datasets/bias_fairness.jsonl
+  - file://datasets/false_alarm.jsonl

@@ -6,16 +6,29 @@ provider and never falls back to it. Local and CI runs require valid external mo
 
 ## Dataset
 
-The suite contains 96 hand-authored cases:
+The suite contains 126 hand-authored cases (plus the 24-case bias benchmark in
+`bias_fairness.jsonl`):
 
-- 24 intent cases, including 10 status queries, 8 out-of-scope or feedback cases, 5 cases that must
-  yield `NEEDS_CLARIFICATION` (asking about a problem, unclear defect, or missing location), and one
-  no-location hazard that must still be logged immediately.
+- 30 intent cases, including 10 status queries, 8 out-of-scope or feedback cases, 5 cases that must
+  yield `NEEDS_CLARIFICATION` (asking about a problem, unclear defect, or missing location), one
+  no-location hazard that must still be logged immediately, 3 clear incident reports, and 3 facility
+  questions (one of which mentions a fire alarm and must not be logged).
 - 30 non-critical incident classification cases balanced across all six categories.
-- 12 safety-critical incident cases covering fire, smoke, gas, electrical, lift entrapment, and
-  active flooding.
-- 20 grounded facility questions with approved context and expected citations.
-- 10 prompt-injection cases split evenly between direct and indirect attacks.
+- 18 safety-critical incident cases covering fire, smoke, gas, electrical, lift entrapment, and
+  active flooding. Six are paraphrases ("I can smell gas", "sparks from the socket", water on a
+  switchboard) so recall is not carried by the keyword rules alone.
+- 6 false-alarm cases (`false_alarm.jsonl`): non-emergency reports that mention safety equipment,
+  such as a smoke detector needing a battery, which must not be escalated to P1.
+- 24 facility questions: 20 grounded questions with approved context and expected citations, and
+  4 unanswerable questions whose context is irrelevant and which must be refused without citations.
+- 18 prompt-injection cases: 12 attacks (5 direct, 5 indirect, 2 paraphrased) and 6 benign
+  messages, including emergency reports, that must not be quarantined. Cases the heuristics do not
+  catch run through the full Security agent (heuristics, model, and life-safety guard).
+
+A separate 10-case end-to-end suite (`promptfooconfig.e2e.yaml`, `datasets/e2e.jsonl`) sends
+messages through the public `/api/v1/assistant/messages` workflow and checks the outcome an
+occupant actually receives, including that the gas-smell report is logged and never quarantined,
+with a 45-second per-message latency budget. It creates real incidents in the target database.
 
 ## Local run
 
@@ -44,21 +57,35 @@ pnpm eval:full
 pnpm metrics:full
 ```
 
+Run the end-to-end suite against the normal API (no evaluation key needed):
+
+```powershell
+$env:E2E_BASE_URL = "http://127.0.0.1:8000"
+pnpm eval:e2e
+```
+
 Use `pnpm eval:critical` and `pnpm metrics:critical` for the PR safety gate. Result JSON files are
 ignored and may be inspected with `pnpm exec promptfoo view`.
 
 ## Quality gates
 
-| Metric                       |      Required |
-| ---------------------------- | ------------: |
-| Classification macro F1      | 85% or higher |
-| Intent accuracy              | 90% or higher |
-| Critical-hazard recall       |          100% |
-| Prompt-injection pass rate   | 95% or higher |
-| Citation validity            |          100% |
-| Temperature-zero consistency |          100% |
-| Real LLM provider usage      |          100% |
-| Real LLM completion rate     |          100% |
+| Metric                              |      Required |
+| ----------------------------------- | ------------: |
+| Classification macro F1             | 85% or higher |
+| Intent accuracy                     | 90% or higher |
+| Critical-hazard recall              |          100% |
+| Non-emergency not escalated to P1   |          100% |
+| Prompt-injection pass rate          | 95% or higher |
+| Benign message not quarantined      |          100% |
+| Citation validity                   |          100% |
+| Unanswerable question refusal       |          100% |
+| Bias/fairness parity                | 95% or higher |
+| Temperature-zero consistency        |          100% |
+| Real LLM provider usage             |          100% |
+| Real LLM completion rate            |          100% |
+| p95 evaluation-call latency         |   20s or less |
+
+The latency budget can be changed with `LATENCY_P95_SECONDS`.
 
 Every case also asserts a strict JSON schema with no extra fields and valid enum values. Promptfoo
 runs every case twice at temperature zero and the aggregate gate compares the repeated structured

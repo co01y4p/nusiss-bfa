@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     generator_model: str = "gpt-5-nano"
     llm_reasoning_effort: str = "minimal"
     llm_max_output_tokens: int = 1024
+    # Per-HTTP-attempt timeout. Kept well below agent_timeout_seconds so a stalled
+    # provider request is retried inside the agent budget instead of consuming it.
+    llm_attempt_timeout_seconds: float = 12.0
     embedding_model: str = "text-embedding-3-small"
     embedding_dim: int = 1536
     rag_top_k: int = 5

@@ -13,10 +13,13 @@ CRITICAL_HAZARD_PATTERNS = {
     "FIRE": re.compile(r"\b(?:fire|flames?|burning)\b", re.IGNORECASE),
     "SMOKE": re.compile(r"\b(?:smoke|smoky)\b", re.IGNORECASE),
     "GAS_SMELL": re.compile(
-        r"\b(?:gas\s+(?:smell|leak|odou?r)|lpg|natural\s+gas)\b", re.IGNORECASE
+        r"\b(?:gas\s+(?:smell|leak|odou?r)|lpg|natural\s+gas|"
+        r"smell(?:s|ed|ing)?\s+(?:of\s+)?gas|gas\s+(?:is\s+)?leaking|leaking\s+gas)\b",
+        re.IGNORECASE,
     ),
     "EXPOSED_LIVE_WIRE": re.compile(
-        r"\b(?:live\s+wire|exposed\s+(?:wire|cable|conductor)|sparking\s+(?:wire|cable))\b",
+        r"\b(?:live\s+wire|exposed\s+(?:wire|cable|conductor)|sparking\s+(?:wire|cable)|"
+        r"sparks|sparking)\b",
         re.IGNORECASE,
     ),
     "LIFT_ENTRAPMENT": re.compile(
@@ -24,11 +27,22 @@ CRITICAL_HAZARD_PATTERNS = {
         r"\b(?:lift|elevator)\b.{0,40}\b(?:stuck|trapped|trap)\b",
         re.IGNORECASE,
     ),
-    "ACTIVE_FLOODING": re.compile(r"\b(?:flood|flooding)\b", re.IGNORECASE),
+    "ACTIVE_FLOODING": re.compile(r"\b(?:flood|flooded|flooding)\b", re.IGNORECASE),
 }
+
+# Named safety equipment and routine safety activities. "The fire extinguisher sticker
+# is out of date" or "the smoke detector needs a battery" mention the hazard word but
+# report no hazard, so these phrases are removed before matching. Alarm activations
+# ("the fire alarm is going off") are deliberately NOT listed: they stay critical.
+SAFETY_EQUIPMENT_PATTERN = re.compile(
+    r"\b(?:fire\s+(?:extinguishers?|drills?|doors?|exits?|escapes?|safety|hose(?:\s+reels?)?|"
+    r"blankets?|wardens?|certificates?)|smoke\s+detectors?)\b",
+    re.IGNORECASE,
+)
 
 
 def detect_critical_hazards(text: str) -> set[str]:
+    text = SAFETY_EQUIPMENT_PATTERN.sub(" ", text)
     return {hazard for hazard, pattern in CRITICAL_HAZARD_PATTERNS.items() if pattern.search(text)}
 
 
@@ -45,6 +59,11 @@ def determine_priority(
         )
     if ai_confidence < 0.75:
         return "P3", ["LOW_CONFIDENCE_MANUAL_REVIEW"], True
+    if ai_priority == "P1" and not hazard_codes & CRITICAL_HAZARDS:
+        # P1 is reserved for the listed life-safety hazards. A model P1 with no hazard
+        # signal at all (neither in the text nor proposed by extraction) is capped at
+        # P2 and still escalated to a manager, so nothing urgent is silently dropped.
+        return "P2", ["AI_P1_WITHOUT_HAZARD_CAPPED"], True
     return ai_priority, ["AI_RECOMMENDATION"], ai_priority in {"P1", "P2"}
 
 

@@ -1,0 +1,38 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+description: Facilities AI Assistant end-to-end workflow suite
+
+# Runs every case through the public assistant endpoint, so the full graph is
+# exercised: Security agent, Intent Router + create_incident, triage agents, RAG,
+# Response agent, output policy validator, and Review agent. The protected
+# /evals/run suite measures each agent in isolation; this suite measures what an
+# occupant actually receives and how long it takes.
+# Note: incident cases create real incidents in the target database.
+
+prompts:
+  - "{{message}}"
+
+providers:
+  - id: http
+    label: assistant-workflow
+    config:
+      url: "{{env.E2E_BASE_URL}}/api/v1/assistant/messages"
+      method: POST
+      headers:
+        Content-Type: application/json
+      body:
+        message: "{{message}}"
+        location: "{{location}}"
+      transformResponse: JSON.stringify(json)
+      maxRetries: 1
+
+defaultTest:
+  assert:
+    - type: javascript
+      metric: e2e_outcome
+      value: file://assertions/e2e.js
+    - type: latency
+      metric: e2e_latency
+      threshold: 45000
+
+tests:
+  - file://datasets/e2e.jsonl
