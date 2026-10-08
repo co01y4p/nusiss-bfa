@@ -306,6 +306,17 @@ class FacilityWorkflow:
             )
             if state.step_count < self.settings.max_agent_steps:
                 state.record("human_review", {"error": str(exc)}, ["WORKFLOW_BOUND_REACHED"])
+        except Exception as exc:
+            # Safety net: a dependency failing mid-workflow (embeddings, retrieval, database)
+            # must never surface as HTTP 500. Hand the request to a manager and keep the
+            # traceback in the log, tagged with the request id.
+            logger.exception("Workflow stopped on an unexpected error")
+            state.outcome = "HUMAN_REVIEW"
+            state.final_response = (
+                "The automated workflow stopped safely. A manager will review it."
+            )
+            if state.step_count < self.settings.max_agent_steps:
+                state.record("human_review", {"error": type(exc).__name__}, ["WORKFLOW_ERROR"])
         if state.incident_id and state.outcome == "HUMAN_REVIEW":
             self.incidents.mark_requires_human_review(state.incident_id)
         self._save_run(state)
