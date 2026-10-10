@@ -948,6 +948,71 @@ td select {
   color: #475569;
 }
 
+.demo-mode-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.demo-mode-label {
+  margin: 0;
+  color: #334155;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.demo-mode-switch {
+  position: relative;
+  width: 46px;
+  height: 26px;
+  margin: 0;
+  padding: 0;
+  flex: 0 0 auto;
+  border: 1px solid #94a3b8;
+  border-radius: 999px;
+  background: #cbd5e1;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease;
+}
+
+.demo-mode-switch:hover {
+  background: #94a3b8;
+}
+
+.demo-mode-switch[aria-checked="true"] {
+  border-color: var(--brand);
+  background: var(--brand);
+}
+
+.demo-mode-switch[aria-checked="true"]:hover {
+  background: var(--brand-dark);
+}
+
+.demo-mode-switch:focus-visible {
+  outline: 3px solid rgb(20 87 217 / 25%);
+  outline-offset: 2px;
+}
+
+.demo-mode-switch-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgb(15 23 42 / 25%);
+  transition: transform 150ms ease;
+}
+
+.demo-mode-switch[aria-checked="true"] .demo-mode-switch-thumb {
+  transform: translateX(20px);
+}
+
 /* ==========================================================================
    Prompt Control Studio Styling
    ========================================================================== */

@@ -823,6 +823,7 @@ function ConfirmCountdown({
 }
 
 export default function AssistantPage() {
+  const [demoModeEnabled, setDemoModeEnabled] = useState(false);
   const [messageText, setMessageText] = useState("");
   const [locationText, setLocationText] = useState("");
   const [selectedFacilityId, setSelectedFacilityId] = useState<string | null>(
@@ -1078,18 +1079,22 @@ export default function AssistantPage() {
               injection defense.
             </p>
           </div>
-          <span
-            className="pill"
-            style={{
-              background: "#eff6ff",
-              color: "#1d4ed8",
-              border: "1px solid #bfdbfe",
-              fontWeight: 700,
-              padding: "4px 12px",
-            }}
-          >
-            Multi-Agent Demo Mode Active
-          </span>
+          <div className="demo-mode-controls">
+            <label className="demo-mode-label" htmlFor="demo-mode-toggle">
+              Demo Mode
+            </label>
+            <button
+              id="demo-mode-toggle"
+              type="button"
+              role="switch"
+              aria-checked={demoModeEnabled}
+              aria-label="Show multi-agent demo details"
+              className="demo-mode-switch"
+              onClick={() => setDemoModeEnabled((enabled) => !enabled)}
+            >
+              <span className="demo-mode-switch-thumb" />
+            </button>
+          </div>
         </div>
 
         <p className="lede" style={{ marginBottom: "0.5rem" }}>
@@ -1215,7 +1220,7 @@ export default function AssistantPage() {
         )}
 
         {/* Quick Test Scenarios with Agent Route Insights */}
-        <div style={{ margin: "1.25rem 0" }}>
+        <div hidden={!demoModeEnabled} style={{ margin: "1.25rem 0" }}>
           <div
             style={{
               fontSize: "0.85rem",
@@ -1641,7 +1646,7 @@ export default function AssistantPage() {
           </section>
 
           {/* Multi-Agent Flow Pipeline and Step-by-Step Execution Log */}
-          {result.trace && result.trace.length > 0 && (
+          {demoModeEnabled && result.trace && result.trace.length > 0 && (
             <section
               className="card"
               style={{ borderTop: "4px solid #1457d9" }}
