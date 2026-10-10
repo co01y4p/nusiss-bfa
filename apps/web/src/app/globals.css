@@ -867,23 +867,16 @@ td select {
   color: #ffffff;
 }
 
-/* Pulsing loader animation for agent steps */
-@keyframes agentPulse {
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
+@keyframes workflowProgress {
+  from {
+    transform: translateX(-100%);
   }
-  50% {
-    opacity: 0.4;
-    transform: scale(0.92);
+  to {
+    transform: translateX(250%);
   }
 }
 
-.agent-live-running {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.workflow-progress {
   padding: 16px 20px;
   background: #eff6ff;
   border: 1px solid #bfdbfe;
@@ -892,12 +885,40 @@ td select {
   color: #1e40af;
 }
 
-.agent-live-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
+.workflow-progress-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.workflow-progress-heading span:last-child {
+  color: #475569;
+  font-weight: 600;
+}
+
+.workflow-progress-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #dbeafe;
+}
+
+.workflow-progress-bar {
+  width: 40%;
+  height: 100%;
+  border-radius: inherit;
   background: #2563eb;
-  animation: agentPulse 1.5s infinite ease-in-out;
+  animation: workflowProgress 1.8s infinite ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workflow-progress-bar {
+    width: 65%;
+    animation: none;
+  }
 }
 
 .scenario-card-btn {

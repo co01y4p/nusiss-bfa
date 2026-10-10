@@ -832,7 +832,6 @@ export default function AssistantPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [activeStepIndex, setActiveStepIndex] = useState(0);
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [expandedPayloads, setExpandedPayloads] = useState<
     Record<number, boolean>
@@ -853,15 +852,6 @@ export default function AssistantPage() {
       }
     : null;
   const awaitingReply = lastAssistant?.outcome === "NEEDS_CLARIFICATION";
-
-  // Animated in-flight step simulation
-  useEffect(() => {
-    if (!busy) return;
-    const interval = setInterval(() => {
-      setActiveStepIndex((prev) => (prev + 1) % 4);
-    }, 1200);
-    return () => clearInterval(interval);
-  }, [busy]);
 
   /**
    * One path for every turn — typed messages and countdown answers alike — so the
@@ -1028,13 +1018,6 @@ export default function AssistantPage() {
     }
   }
 
-  const liveSteps = [
-    "🛡️ Security Agent: Scanning input for prompt injection, jailbreaks & PII...",
-    "🎯 Intent Classifier: Analyzing semantics & selecting graph branch...",
-    "⚙️ Multi-Agent Graph: Running domain extraction, classification & priority policy...",
-    "⚖️ Review Guardrail & Citation Validator: Grounding citations & checking safety policies...",
-  ];
-
   const filteredTrace = result?.trace?.filter((step) => {
     if (filterCategory === "all") return true;
     const meta = getNodeMeta(step.node);
@@ -1162,10 +1145,7 @@ export default function AssistantPage() {
               }}
             >
               {busy ? (
-                <>
-                  <span className="agent-live-dot" />
-                  Running Multi-Agent Workflow...
-                </>
+                <>Running Multi-Agent Workflow...</>
               ) : awaitingReply ? (
                 <>💬 Send Reply</>
               ) : (
@@ -1200,15 +1180,18 @@ export default function AssistantPage() {
         </form>
 
         {busy && (
-          <div className="agent-live-running">
-            <div className="agent-live-dot" />
-            <div>
-              <div style={{ fontWeight: 700, fontSize: "0.92rem" }}>
-                Agent Graph Traversing Nodes:
-              </div>
-              <div style={{ fontSize: "0.85rem", marginTop: "2px" }}>
-                {liveSteps[activeStepIndex]}
-              </div>
+          <div
+            className="workflow-progress"
+            role="progressbar"
+            aria-label="Multi-agent workflow progress"
+            aria-valuetext="Processing"
+          >
+            <div className="workflow-progress-heading">
+              <span>Running multi-agent workflow</span>
+              <span>Processing…</span>
+            </div>
+            <div className="workflow-progress-track" aria-hidden="true">
+              <div className="workflow-progress-bar" />
             </div>
           </div>
         )}
