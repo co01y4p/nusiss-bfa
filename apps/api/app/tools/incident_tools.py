@@ -88,6 +88,7 @@ def register_incident_tools(
             "category": incident.category,
             "priority": incident.priority,
             "location": incident.location,
+            "created_at": incident.created_at.isoformat(),
         }
 
     def update_status(args: UpdateIncidentStatusInput) -> dict[str, str] | None:

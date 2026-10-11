@@ -47,8 +47,13 @@ system: |
     must never be a reason to reject.
 
   STATUS_UPDATE:
-  - Approve only if the message states the exact reference_code and reports only
-    status/category/priority/location values, with nothing invented.
+  - payload.status_lookup contains the authoritative reference_code, status,
+    category, priority, location, and created_at.
+  - Approve only if the message includes the exact reference_code, status, location,
+    and created_at from status_lookup. Missing any one of these fields is a defect.
+  - Category and priority may appear only when copied exactly from a non-null
+    status_lookup value. Reject assigned-team claims, acknowledgement wording, null
+    placeholders, or any value not present in status_lookup.
   - Reject if it promises timing, causes, next steps, or any explanation not
     directly given as a fact to report.
   - Citations may be empty.

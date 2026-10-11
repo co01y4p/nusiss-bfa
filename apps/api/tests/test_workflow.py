@@ -15,7 +15,7 @@ from app.rag.embeddings import FakeEmbeddings
 from app.rag.retriever import RetrievedChunk
 from app.tools.incident_tools import register_incident_tools
 from app.tools.registry import ToolRegistry
-from app.workflows.facility_graph import FacilityWorkflow
+from app.workflows.facility_graph import FacilityWorkflow, status_response_matches_lookup
 from tests.fakes import InMemoryIncidentRepository, InMemoryWorkflowRunRepository
 
 
@@ -50,6 +50,30 @@ def make_workflow(
         tools=tools,
     )
     return workflow, incidents, runs
+
+
+def test_status_response_must_match_every_public_fact_without_acknowledgement() -> None:
+    lookup = {
+        "reference_code": "BFA-ABC123XYZ4",
+        "status": "RECEIVED",
+        "location": "Level 2 corridor",
+        "created_at": "2026-10-11T03:22:58+00:00",
+    }
+    valid = (
+        "Your report BFA-ABC123XYZ4 is currently RECEIVED.\n"
+        "Location: Level 2 corridor.\n"
+        "Created at: 2026-10-11T03:22:58+00:00."
+    )
+
+    assert status_response_matches_lookup(valid, lookup)
+    assert not status_response_matches_lookup(valid.replace("\n", " "), lookup)
+    assert not status_response_matches_lookup(
+        valid + " Assigned team: PLUMBING_TEAM.", lookup
+    )
+    assert not status_response_matches_lookup(valid.replace("Level 2 corridor", "Level 3"), lookup)
+    assert not status_response_matches_lookup(
+        valid.replace("Your report", "Your report acknowledged:"), lookup
+    )
 
 
 @pytest.mark.asyncio
@@ -278,8 +302,15 @@ async def test_status_query_reports_existing_incident() -> None:
 
     state = await workflow.run(text=f"What is the status of {reference_code}?")
 
+    incident = incidents.get_by_reference(reference_code)
+    assert incident is not None
     assert state.outcome == "FINALIZED"
     assert reference_code in state.final_response
+    assert incident.status.value in state.final_response
+    assert incident.location in state.final_response
+    assert incident.created_at.isoformat() in state.final_response
+    assert "assigned team" not in state.final_response.lower()
+    assert "acknowledged" not in state.final_response.lower()
     assert [step.node for step in state.trace] == [
         "security",
         "intent",
@@ -770,7 +801,7 @@ async def test_heuristic_injection_inside_hazard_report_is_still_quarantined() -
 
 @pytest.mark.asyncio
 async def test_replies_missing_the_reference_code_fall_back_to_templates() -> None:
-    workflow, _, _ = make_workflow(
+    workflow, incidents, _ = make_workflow(
         FakeStructuredLLM(
             handlers={"ResponseOutput": {"message": "NULL", "citations": [], "reason_codes": []}}
         )
@@ -787,8 +818,15 @@ async def test_replies_missing_the_reference_code_fall_back_to_templates() -> No
 
     status = await workflow.run(text=f"What is the status of {reference_code}?")
 
+    incident = incidents.get_by_reference(reference_code)
+    assert incident is not None
     assert status.outcome == "FINALIZED"
-    assert status.final_response == f"Your report {reference_code} is currently RECEIVED."
+    assert status.final_response == (
+        f"Your report {reference_code} is currently RECEIVED.\n"
+        f"Location: Level 3.\n"
+        f"Created at: {incident.created_at.isoformat()}."
+    )
+    assert "response_guard" in [step.node for step in status.trace]
 
 
 @pytest.mark.asyncio

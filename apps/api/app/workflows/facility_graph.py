@@ -59,7 +59,37 @@ def incident_acknowledgement_template(reference_code: str, priority: str, team: 
 
 def status_update_template(lookup: dict[str, Any]) -> str:
     """Deterministic status reply built only from looked-up fields."""
-    return f"Your report {lookup['reference_code']} is currently {lookup['status']}."
+    return (
+        f"Your report {lookup['reference_code']} is currently {lookup['status']}.\n"
+        f"Location: {lookup['location']}.\n"
+        f"Created at: {lookup['created_at']}."
+    )
+
+
+def status_response_matches_lookup(message: str, lookup: dict[str, Any]) -> bool:
+    """Require every public status fact and reject acknowledgement-only wording."""
+    normalized = message.casefold()
+    lines = [line.strip().casefold() for line in message.splitlines() if line.strip()]
+    required = (
+        lookup.get("reference_code"),
+        lookup.get("status"),
+        lookup.get("location"),
+        lookup.get("created_at"),
+    )
+    expected_lines = (
+        (lookup.get("reference_code"), lookup.get("status")),
+        (lookup.get("location"),),
+        (lookup.get("created_at"),),
+    )
+    has_three_line_structure = len(lines) == len(expected_lines) and all(
+        all(value and str(value).casefold() in line for value in values)
+        for line, values in zip(lines, expected_lines, strict=True)
+    )
+    return (
+        has_three_line_structure
+        and all(value and str(value).casefold() in normalized for value in required)
+        and not any(phrase in normalized for phrase in ("assigned team", "acknowledged"))
+    )
 
 
 def normalize_history(history: list[dict[str, str]] | None) -> list[dict[str, str]]:
@@ -935,7 +965,9 @@ class FacilityWorkflow:
         response_payload = {"status_lookup": lookup.data}
         response = await self.response.run(response_payload)
         self._record_model_output(state, "status_response", response_payload, response)
-        if reference_code not in response.message.upper() and isinstance(lookup.data, dict):
+        if isinstance(lookup.data, dict) and not status_response_matches_lookup(
+            response.message, lookup.data
+        ):
             response.message = status_update_template(lookup.data)
             response.citations = []
             self._record(
@@ -945,7 +977,11 @@ class FacilityWorkflow:
                 ["RESPONSE_TEMPLATE_GUARD"],
             )
         await self._review_and_finalize(
-            state, response.message, response.citations, response_type="STATUS_UPDATE"
+            state,
+            response.message,
+            response.citations,
+            response_type="STATUS_UPDATE",
+            status_lookup=lookup.data if isinstance(lookup.data, dict) else None,
         )
 
     async def _retrieve_safe_chunks(self, state: WorkflowState, query: str) -> list[Any]:
@@ -1060,6 +1096,7 @@ class FacilityWorkflow:
         approved_outcome: str = "FINALIZED",
         citations_verified: bool | None = None,
         priority: str | None = None,
+        status_lookup: dict[str, Any] | None = None,
     ) -> None:
         del retrieved_chunks
         # Output policy check
@@ -1083,6 +1120,7 @@ class FacilityWorkflow:
             "citations": citations,
             "reference_code": state.reference_code,
             "priority": priority,
+            "status_lookup": status_lookup,
             # Deterministic result of the citation validator. The reviewer must not
             # re-litigate grounding that has already been machine-verified.
             "citations_verified": citations_verified,
