@@ -4,6 +4,7 @@ import { FormEvent, useRef, useState } from "react";
 
 import { apiRequest } from "@/lib/api";
 
+import AiDisclosure from "@/components/ai-disclosure";
 import BuildingMap, { SelectedFacility } from "@/components/building-map";
 
 type CreatedIncident = { id: string; reference_code: string; status: string };
@@ -61,6 +62,7 @@ export default function ReportPage() {
         area (HVAC, lift, electrical, plumbing, access, general).
       </p>
       <BuildingMap selectedId={selectedFacilityId} onSelect={selectFacility} />
+      <AiDisclosure variant="report" />
       <form onSubmit={submit}>
         <label htmlFor="location">Location</label>
         <input

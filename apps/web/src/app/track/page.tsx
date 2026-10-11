@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 
+import AiDisclosure from "@/components/ai-disclosure";
 import { apiRequest } from "@/lib/api";
 
 type TrackedIncident = {
@@ -39,6 +40,7 @@ export default function TrackPage() {
   return (
     <section className="card">
       <h1>Track a report</h1>
+      <AiDisclosure variant="track" />
       <form onSubmit={submit}>
         <label htmlFor="code">Reference code</label>
         <input id="code" name="code" placeholder="BFA-XXXXXXXXXX" required />
