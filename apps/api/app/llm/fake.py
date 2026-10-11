@@ -270,7 +270,13 @@ class FakeStructuredLLM:
             if isinstance(status_lookup, dict) and status_lookup:
                 ref = status_lookup.get("reference_code", "")
                 incident_status = status_lookup.get("status", "UNKNOWN")
-                content = f"Incident {ref} is currently {incident_status}."
+                location = status_lookup.get("location", "UNKNOWN")
+                created_at = status_lookup.get("created_at", "UNKNOWN")
+                content = (
+                    f"Your report {ref} is currently {incident_status}.\n"
+                    f"Location: {location}.\n"
+                    f"Created at: {created_at}."
+                )
                 citations: list[str] = []
                 reasons = ["STATUS_REPORTED"]
             elif reference:
