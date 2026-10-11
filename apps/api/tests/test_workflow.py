@@ -67,9 +67,7 @@ def test_status_response_must_match_every_public_fact_without_acknowledgement() 
 
     assert status_response_matches_lookup(valid, lookup)
     assert not status_response_matches_lookup(valid.replace("\n", " "), lookup)
-    assert not status_response_matches_lookup(
-        valid + " Assigned team: PLUMBING_TEAM.", lookup
-    )
+    assert not status_response_matches_lookup(valid + " Assigned team: PLUMBING_TEAM.", lookup)
     assert not status_response_matches_lookup(valid.replace("Level 2 corridor", "Level 3"), lookup)
     assert not status_response_matches_lookup(
         valid.replace("Your report", "Your report acknowledged:"), lookup
