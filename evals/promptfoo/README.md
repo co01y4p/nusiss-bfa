@@ -41,8 +41,9 @@ $env:EVALUATION_KEY = "local-evaluation-key"
 $env:LLM_PROVIDER = "openai"
 $env:LLM_BASE_URL = "https://api.openai.com/v1"
 $env:LLM_API_KEY = "your-evaluation-api-key"
-$env:CLASSIFIER_MODEL = "gpt-5-nano"
-$env:GENERATOR_MODEL = "gpt-5-nano"
+$env:CLASSIFIER_MODEL = "gpt-6-luna"
+$env:GENERATOR_MODEL = "gpt-6-luna"
+$env:LLM_REASONING_EFFORT = "low"
 apps/api/.venv/Scripts/python.exe -m uvicorn app.main:app --app-dir apps/api --port 8011
 ```
 

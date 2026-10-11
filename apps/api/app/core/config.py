@@ -53,9 +53,9 @@ class Settings(BaseSettings):
     llm_provider: str = "openai"
     llm_base_url: str = "https://api.openai.com/v1"
     llm_api_key: str = ""
-    classifier_model: str = "gpt-5-nano"
-    generator_model: str = "gpt-5-nano"
-    llm_reasoning_effort: str = "minimal"
+    classifier_model: str = "gpt-6-luna"
+    generator_model: str = "gpt-6-luna"
+    llm_reasoning_effort: str = "low"
     llm_max_output_tokens: int = 1024
     # Per-agent overrides of LLM_REASONING_EFFORT, as "agent=effort,agent=effort",
     # e.g. "security=low,intent=low,priority=low". Agents not listed use the default.

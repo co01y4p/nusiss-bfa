@@ -115,8 +115,9 @@ jobs:
           EVALUATION_KEY: ci-evaluation-key
           LLM_PROVIDER: openai
           LLM_BASE_URL: https://api.openai.com/v1
-          CLASSIFIER_MODEL: gpt-5-nano
-          GENERATOR_MODEL: gpt-5-nano
+          CLASSIFIER_MODEL: gpt-6-luna
+          GENERATOR_MODEL: gpt-6-luna
+          LLM_REASONING_EFFORT: low
         run: |
           python -m uvicorn app.main:app --app-dir apps/api --host 127.0.0.1 --port 8000 > /tmp/m5-api.log 2>&1 &
           for attempt in {1..30}; do

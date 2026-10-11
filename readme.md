@@ -96,7 +96,7 @@ For complete technical specifications and justifications, see **[docs/aas-baseli
   - **Docker Observability Profile:** Prometheus (`port 9090`) and Grafana (`port 3001`) services configured under `infra/compose/compose.yml` via `--profile observability`.
   - **Langfuse LLM Tracing & Observability:** deep, non-blocking telemetry capturing complete multi-agent execution graphs:
     - **Trace Lifecycle:** full root traces per request (`facility-assistant`) linking user prompts, location, outcomes, reference codes, session IDs, and reason codes.
-    - **Agent Generations:** detailed observation events tracking LLM models (e.g. `gpt-5-nano`), sanitized input prompts, model outputs, and exact token usage (prompt, completion, total).
+    - **Agent Generations:** detailed observation events tracking LLM models (e.g. `gpt-6-luna`), sanitized input prompts, model outputs, and exact token usage (prompt, completion, total).
     - **Workflow Spans:** execution tracking for tools (`create_incident`, `lookup_incident_status`, `find_recent_incidents`), knowledge retrieval, and security guardrail checks.
     - **Privacy & Defense-in-Depth:** automatic PII redaction on inputs/prompts before sending to Langfuse and suppression of authorization secrets/tokens.
     - **Cloud & Self-Hosted Ready:** seamlessly works with Langfuse Cloud (`https://cloud.langfuse.com`) or self-hosted instances with graceful, zero-latency no-op fallback when disabled.

@@ -2,7 +2,7 @@
 
 FastAPI backend for milestones M0 through M5. Includes a bounded multi-agent workflow,
 pgvector-backed RAG, defense-in-depth agent security, and a protected evaluation API. The
-application uses the OpenAI Responses API with `gpt-5-nano` by default. Deterministic fake
+application uses the OpenAI Responses API with `gpt-6-luna` by default. Deterministic fake
 providers support automated unit tests, while the M5 evaluation harness requires a real LLM.
 
 ## Local setup
@@ -65,8 +65,8 @@ System prompts for each of the 8 bounded workflow agents are configured with def
 
 
 Set `LLM_API_KEY` in the repository-level `.env` file. The default production-like configuration
-uses `LLM_PROVIDER=openai`, `LLM_BASE_URL=https://api.openai.com/v1`, and `gpt-5-nano` for both
-classification and response generation. `LLM_REASONING_EFFORT=minimal` keeps reasoning cost and
+uses `LLM_PROVIDER=openai`, `LLM_BASE_URL=https://api.openai.com/v1`, and `gpt-6-luna` for both
+classification and response generation. `LLM_REASONING_EFFORT=low` keeps reasoning cost and
 latency low. Never commit the `.env` file.
 
 The OpenAI provider uses the Responses API with strict JSON-schema output. The Intent Agent receives
