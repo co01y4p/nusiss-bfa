@@ -143,7 +143,16 @@ jobs:
           EVALUATION_BASE_URL: http://127.0.0.1:8000
           PROMPTFOO_DISABLE_TELEMETRY: "true"
         run: |
+          set +e
           pnpm --dir evals/promptfoo eval:full
+          eval_status=$?
+          set -e
+
+          # Promptfoo uses exit code 100 when assertions fail; let metrics:full evaluate the aggregate gate.
+          if [ "$eval_status" -ne 0 ] && [ "$eval_status" -ne 100 ]; then
+            exit "$eval_status"
+          fi
+
           pnpm --dir evals/promptfoo metrics:full
       - uses: actions/upload-artifact@v4
         if: always()
