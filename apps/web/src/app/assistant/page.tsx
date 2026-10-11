@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import { apiRequest } from "@/lib/api";
+import AiDisclosure, { AiAssistedLabel } from "@/components/ai-disclosure";
 import BuildingMap, { SelectedFacility } from "@/components/building-map";
 
 export type TraceStep = {
@@ -1090,6 +1091,8 @@ export default function AssistantPage() {
           onSelect={selectFacility}
         />
 
+        <AiDisclosure variant="chat" />
+
         <form onSubmit={submit}>
           <label htmlFor="message">
             {awaitingReply
@@ -1457,9 +1460,12 @@ export default function AssistantPage() {
                     fontSize: "0.98rem",
                   }}
                 >
-                  {!isUser && item.outcome && (
+                  {!isUser && (
                     <div
                       style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
                         fontSize: "0.72rem",
                         fontWeight: 700,
                         color: style?.color ?? "#b45309",
@@ -1467,7 +1473,12 @@ export default function AssistantPage() {
                         letterSpacing: "0.02em",
                       }}
                     >
-                      {style?.icon ?? ""} {item.outcome}
+                      <AiAssistedLabel />
+                      {item.outcome && (
+                        <span>
+                          {style?.icon ?? ""} {item.outcome}
+                        </span>
+                      )}
                     </div>
                   )}
                   <span style={{ whiteSpace: "pre-wrap" }}>{item.content}</span>
@@ -1545,6 +1556,7 @@ export default function AssistantPage() {
                 style={{ display: "flex", alignItems: "center", gap: "10px" }}
               >
                 <h2>Latest Assistant Output</h2>
+                <AiAssistedLabel />
                 {result.trace && (
                   <span
                     style={{

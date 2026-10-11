@@ -1327,3 +1327,31 @@ td select {
   border-radius: 6px;
   font-weight: 600;
 }
+
+.ai-label {
+  display: inline-block;
+  padding: 1px 8px;
+  border: 1px solid #c7d7f7;
+  border-radius: 999px;
+  background: #eef3fd;
+  color: var(--brand-dark);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.ai-disclosure {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 12px 0;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f7f9fd;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.ai-disclosure p {
+  margin: 0;
+}
