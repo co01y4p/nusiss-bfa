@@ -57,7 +57,6 @@ jobs:
     runs-on: ubuntu-latest
     # evals/promptfoo is a test runner that never ships and whose findings are in deep
     # transitive dependencies of a pinned third-party tool: report them, don't block on them.
-    continue-on-error: ${{ matrix.advisory }}
     strategy:
       fail-fast: false
       matrix:
@@ -75,8 +74,28 @@ jobs:
         with:
           node-version: 22
       - name: Audit ${{ matrix.project }} (fail on high or critical)
+        if: ${{ !matrix.advisory }}
         working-directory: ${{ matrix.project }}
         run: pnpm audit --audit-level=high
+      - name: Audit ${{ matrix.project }} (advisory only)
+        if: ${{ matrix.advisory }}
+        working-directory: ${{ matrix.project }}
+        shell: bash
+        run: |
+          set +e
+          pnpm audit --audit-level=high
+          audit_status=$?
+          set -e
+
+          if [ "$audit_status" -ne 0 ]; then
+            {
+              echo "### Promptfoo dependency audit"
+              echo
+              echo "Known vulnerabilities were reported above, but this audit is informational because Promptfoo is a CI-only test tool and is not shipped with the application."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          exit 0
 
   sast:
     name: Static analysis (Semgrep)

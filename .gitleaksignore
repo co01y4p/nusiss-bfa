@@ -1,0 +1,3 @@
+# Historical SESSION_SECRET from .env.old-vanilla-backup in commit 1473898.
+# The exposed value must remain rotated/invalid; this entry suppresses only this exact finding.
+14738981751c599264a6a33bc2505996b4708f9b:.env.old-vanilla-backup:generic-api-key:1
