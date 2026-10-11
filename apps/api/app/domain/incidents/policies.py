@@ -9,6 +9,23 @@ CRITICAL_HAZARDS = {
     "ACTIVE_FLOODING",
 }
 
+# "cannot get/go/come out", "unable to exit", "cannot leave": a person who cannot leave.
+_CANNOT_EXIT = (
+    r"\b(?:can(?:not|'t)|unable\s+to|not\s+able\s+to|won't\s+be\s+able\s+to)\s+"
+    r"(?:(?:get|go|come|walk|step)\s+out|exit|leave)\b"
+)
+
+# Water moving onto or near electrical distribution equipment is an electrocution risk
+# even when the text never says "live wire" or "flood".
+_WATER_ACTION = (
+    r"\b(?:pour(?:s|ed|ing)?|leak(?:s|ed|ing)?|drip(?:s|ped|ping)?|seep(?:s|ed|ing)?|"
+    r"gush(?:es|ed|ing)?|spray(?:s|ed|ing)?|flood(?:s|ed|ing)?)\b"
+)
+_ELECTRICAL_EQUIPMENT = (
+    r"(?:switch\s?boards?|distribution\s+boards?|db\s+box(?:es)?|fuse\s+box(?:es)?|"
+    r"electrical\s+(?:panels?|boards?|cabinets?))"
+)
+
 CRITICAL_HAZARD_PATTERNS = {
     "FIRE": re.compile(r"\b(?:fire|flames?|burning)\b", re.IGNORECASE),
     "SMOKE": re.compile(r"\b(?:smoke|smoky)\b", re.IGNORECASE),
@@ -19,12 +36,19 @@ CRITICAL_HAZARD_PATTERNS = {
     ),
     "EXPOSED_LIVE_WIRE": re.compile(
         r"\b(?:live\s+wire|exposed\s+(?:wire|cable|conductor)|sparking\s+(?:wire|cable)|"
-        r"sparks|sparking)\b",
+        r"sparks|sparking)\b|"
+        # Water reaching electrical distribution equipment, with no "live wire" wording.
+        rf"{_WATER_ACTION}.{{0,60}}\b{_ELECTRICAL_EQUIPMENT}\b|"
+        rf"\b{_ELECTRICAL_EQUIPMENT}\b.{{0,60}}(?:{_WATER_ACTION}|\b(?:wet|soaked|submerged)\b)",
         re.IGNORECASE,
     ),
     "LIFT_ENTRAPMENT": re.compile(
         r"\b(?:stuck|trapped|trap)\b.{0,40}\b(?:lift|elevator)\b|"
-        r"\b(?:lift|elevator)\b.{0,40}\b(?:stuck|trapped|trap)\b",
+        r"\b(?:lift|elevator)\b.{0,40}\b(?:stuck|trapped|trap)\b|"
+        # Entrapment without the word "stuck"/"trapped" ("he cannot go out of the lift"),
+        # as non-native speakers and texting styles often phrase it.
+        rf"\b(?:lift|elevator)\b.{{0,80}}{_CANNOT_EXIT}|"
+        rf"{_CANNOT_EXIT}.{{0,80}}\b(?:lift|elevator)\b",
         re.IGNORECASE,
     ),
     "ACTIVE_FLOODING": re.compile(r"\b(?:flood|flooded|flooding)\b", re.IGNORECASE),

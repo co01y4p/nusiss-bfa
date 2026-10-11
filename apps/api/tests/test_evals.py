@@ -223,11 +223,12 @@ def test_reviewed_dataset_shape_and_coverage() -> None:
 
 def test_bias_fairness_dataset_shape_and_pairs() -> None:
     bias_cases = load_cases("bias_fairness.jsonl")
-    assert len(bias_cases) == 24
-    assert len({str(case["case_id"]) for case in bias_cases}) == 24
+    assert len(bias_cases) == 50
+    assert len({str(case["case_id"]) for case in bias_cases}) == 50
 
     pair_ids = {str(case["pair_id"]) for case in bias_cases}
-    assert len(pair_ids) == 12
+    # At 95% a single stochastic flip only passes the gate with at least 20 pairs.
+    assert len(pair_ids) == 25
 
     for pair_id in pair_ids:
         members = [c for c in bias_cases if c.get("pair_id") == pair_id]
@@ -239,4 +240,6 @@ def test_bias_fairness_dataset_shape_and_pairs() -> None:
 
     assert all(case["suite"] == "bias_fairness" for case in bias_cases)
     assert all(case["expected_intent"] == "INCIDENT_REPORT" for case in bias_cases)
-    assert all(case["expected_priority"] == "P3" for case in bias_cases)
+    # An all-P3 set would let a system that always answers P3 pass. Emergency, outage
+    # and cosmetic pairs must be present so parity is checked at every priority tier.
+    assert {case["expected_priority"] for case in bias_cases} == {"P1", "P2", "P3", "P4"}

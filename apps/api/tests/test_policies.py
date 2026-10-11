@@ -37,6 +37,24 @@ def test_low_confidence_routes_to_manual_review() -> None:
         ("Two people are trapped in lift three.", {"LIFT_ENTRAPMENT"}),
         ("A flood is blocking the basement exit.", {"ACTIVE_FLOODING"}),
         ("The sink has a slow drip.", set()),
+        (
+            "Water is pouring from the ceiling onto the electrical switchboard.",
+            {"EXPOSED_LIVE_WIRE"},
+        ),
+        (
+            "The distribution board in the plant room is wet and water keeps dripping.",
+            {"EXPOSED_LIVE_WIRE"},
+        ),
+        ("The water cooler is next to the electrical panel in the pantry.", set()),
+        ("The switchboard room door is jammed and will not open.", set()),
+        (
+            "Block A lift, one person is inside, the door is not open, he cannot go out.",
+            {"LIFT_ENTRAPMENT"},
+        ),
+        ("Child inside the lift and unable to get out, door will not open.", {"LIFT_ENTRAPMENT"}),
+        ("The lift door is not opening on Level 5 and I am waiting outside.", set()),
+        ("The Level 2 lift is out of order and slow to arrive.", set()),
+        ("Pantry pipe leaking like waterfall sia, water all over the floor already.", set()),
         ("I can smell gas in the kitchen.", {"GAS_SMELL"}),
         ("Sparks are coming out of the plug socket.", {"EXPOSED_LIVE_WIRE"}),
         ("The basement car park is flooded.", {"ACTIVE_FLOODING"}),
@@ -112,6 +130,57 @@ async def test_priority_model_sees_unconfirmed_hazards_as_suspected_only() -> No
     assert decision.priority.value == "P3"
 
 
+@pytest.mark.asyncio
+async def test_suspected_flooding_without_flood_words_cannot_unlock_p1() -> None:
+    llm = FakeStructuredLLM(
+        handlers={
+            "PrioritySignalOutput": {
+                "priority": "P1",
+                "confidence": 0.95,
+                "reason_codes": ["ADVISORY_P1_ACTIVE_FLOODING"],
+            }
+        }
+    )
+    agent = PriorityAgent(llm, model="fake", timeout_seconds=1)
+
+    decision = await agent.decide(
+        {
+            "text": "Pantry water pipe leaking like waterfall sia, water all over the floor.",
+            "hazard_codes": ["ACTIVE_FLOODING"],
+            "category": "PLUMBING",
+        }
+    )
+
+    assert decision.priority.value == "P2"
+    assert "AI_P1_WITHOUT_HAZARD_CAPPED" in decision.reason_codes
+    assert decision.requires_human_review is True
+
+
+@pytest.mark.asyncio
+async def test_flood_words_in_the_text_still_force_p1() -> None:
+    llm = FakeStructuredLLM(
+        handlers={
+            "PrioritySignalOutput": {
+                "priority": "P3",
+                "confidence": 0.95,
+                "reason_codes": ["ADVISORY_P3_LOCALIZED"],
+            }
+        }
+    )
+    agent = PriorityAgent(llm, model="fake", timeout_seconds=1)
+
+    decision = await agent.decide(
+        {
+            "text": "The pantry is flooded and the water keeps rising.",
+            "hazard_codes": [],
+            "category": "PLUMBING",
+        }
+    )
+
+    assert decision.priority.value == "P1"
+    assert "CRITICAL_HAZARD:ACTIVE_FLOODING" in decision.reason_codes
+
+
 def test_model_p1_without_any_hazard_signal_is_capped_and_escalated() -> None:
     priority, reasons, review = determine_priority(
         set(), "P1", 0.95, text="Power trip at row 4 sockets, all wall plugs have no power."
@@ -127,7 +196,7 @@ def test_model_p1_backed_by_an_extracted_hazard_is_kept() -> None:
         {"EXPOSED_LIVE_WIRE"},
         "P1",
         0.95,
-        text="Water is pouring from the ceiling onto the electrical switchboard.",
+        text="There is a loud crackling noise from the Level 2 switch room.",
     )
 
     assert priority == "P1"

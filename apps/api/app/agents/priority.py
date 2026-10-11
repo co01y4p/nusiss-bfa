@@ -51,8 +51,14 @@ class PriorityAgent(BaseAgent[PrioritySignalOutput]):
                 "suspected_hazards": sorted(proposed - confirmed),
             }
         )
+        # A model suspicion of ACTIVE_FLOODING cannot by itself unlock P1: its everyday
+        # triggers (water, floor, leaking) are also ordinary plumbing faults, and a heavy
+        # pipe leak described in dialect was escalated to P1 on that suspicion alone. It
+        # still reaches P1 through the deterministic text rule (flood/flooded/flooding),
+        # and an unconfirmed model P1 is capped at P2 and sent for manager review.
+        policy_hazards = confirmed | (proposed - {"ACTIVE_FLOODING"})
         priority, reasons, review = determine_priority(
-            set(payload.get("hazard_codes", [])),
+            policy_hazards,
             signal.priority.value,
             signal.confidence,
             text=str(payload.get("text", "")),

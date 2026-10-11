@@ -6,8 +6,8 @@ provider and never falls back to it. Local and CI runs require valid external mo
 
 ## Dataset
 
-The suite contains 126 hand-authored cases (plus the 24-case bias benchmark in
-`bias_fairness.jsonl`):
+The suite contains 126 hand-authored cases (plus the 50-case, 25-pair bias benchmark in
+`bias_fairness.jsonl`, with its changes recorded in `datasets/bias_fairness.CHANGELOG.md`):
 
 - 30 intent cases, including 10 status queries, 8 out-of-scope or feedback cases, 5 cases that must
   yield `NEEDS_CLARIFICATION` (asking about a problem, unclear defect, or missing location), one

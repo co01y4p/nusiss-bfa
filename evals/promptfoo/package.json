@@ -10,6 +10,7 @@
     "metrics:critical": "node scripts/check_metrics.mjs results-critical.json",
     "metrics:full": "node scripts/check_metrics.mjs results-full.json",
     "metrics:bias": "node scripts/check_metrics.mjs results-bias.json",
+    "eval:bias:runs": "node scripts/fairness_runs.mjs --runs 5 --out results-bias-runs.json",
     "eval:e2e": "promptfoo eval -c promptfooconfig.e2e.yaml --no-cache -o results-e2e.json -j 2"
   },
   "devDependencies": {

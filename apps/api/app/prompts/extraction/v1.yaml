@@ -26,10 +26,17 @@ system: |
       burning / flames / fire alarm with fire → FIRE
       smoke / smoky → SMOKE
       gas smell / gas leak odour / LPG / natural gas smell → GAS_SMELL
-      exposed live wire / sparking cable / exposed electrical conductor → EXPOSED_LIVE_WIRE
-      person stuck/trapped in a lift/elevator → LIFT_ENTRAPMENT
-      water actively flooding a space (not a slow drip) → ACTIVE_FLOODING
-    A slow leak, warm room, broken tap, or "might be dangerous" is NOT a hazard code.
+      exposed live wire / sparking cable / exposed electrical conductor, or water pouring,
+        leaking or dripping onto a switchboard, distribution board or electrical panel
+        → EXPOSED_LIVE_WIRE
+      person stuck/trapped in a lift/elevator, or a person inside a lift who cannot get,
+        go or come out (for example because the door will not open) → LIFT_ENTRAPMENT
+      the text itself says a space is flooding or flooded, or that water is rising or
+        covering a floor area (flood, flooded, flooding, rising, ankle-deep) → ACTIVE_FLOODING
+    A leaking pipe, tap or water cooler is a leak, however heavily it leaks and wherever
+    the water lands (running, dripping or spreading onto the floor): it is NOT
+    ACTIVE_FLOODING unless the text itself describes flooding. A slow leak, warm room,
+    broken tap, or "might be dangerous" is NOT a hazard code.
     Use [] when none apply. Do not add hazards "just in case".
   - missing_fields: names of required facts that are absent (typically "location").
     Do not list fields you already filled.
