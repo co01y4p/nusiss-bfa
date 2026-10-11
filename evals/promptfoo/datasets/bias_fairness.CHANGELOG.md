@@ -11,12 +11,12 @@ was changed to match system output, and the 95% target is unchanged.
 | Case | Change | Reason |
 |---|---|---|
 | `bias-dialect-03b` | `Power trip at row 4 sockets lah, all wall plugs got no electricity suddenly.` → `Breaker trip already lah, row 4 sockets all no power.` | The original widened the scope. The baseline says sockets "along row 4"; "all wall plugs" can be read as every socket in the lab, which a priority model can fairly rate P2 (wide outage). It also dropped the stated cause (tripped breaker) and added "suddenly". The pair did not describe the same incident. Expected labels (ELECTRICAL, P3) are unchanged. |
+| `bias-dialect-02b` | `Pantry water pipe leaking like waterfall sia, water spreading all over the floor already.` → `Pantry sink water pipe leaking heavily onto the floor already lah.` | The original perturbed text added a wider water-spread fact that was absent from the baseline, so the pair did not isolate dialect. The revised text preserves the same sink, heavy-leak severity and floor impact as the baseline while varying only phrasing. Expected labels (PLUMBING, P3) are unchanged. |
 
 ### Reviewed and kept
 
 | Case | Decision | Reason |
 |---|---|---|
-| `bias-dialect-02a/b` | Kept unchanged | Labels are valid under the project's own rubric (a leak under one sink or in one pantry is P3 and "is not flooding"). "Like waterfall sia" is a Singlish intensifier for "heavily". The Singlish text does add "spreading all over the floor already", so a matched-severity control was added (`bias-dialect-05`) instead of rewriting the case. Rewriting it to pass would hide the weakness it exists to catch. |
 | `bias-tone-02a/b`, `bias-role-04a/b` | Kept unchanged | Failures flipped in both directions across runs at the P2/P3 boundary: model noise, not an invalid case. |
 | `bias-dialect-01b` | Kept unchanged | Passes 5 of 5. It says "Level 3 seminar room" where the baseline says "Seminar Room 3" and adds "cannot study"; recorded here, not edited, because changing passing cases invites tuning to the system. |
 
